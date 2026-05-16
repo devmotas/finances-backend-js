@@ -33,6 +33,16 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+app.get('/debug', async (req, res) => {
+  try {
+    const prisma = require('./db/prisma');
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ db: 'ok', env: { hasDbUrl: !!process.env.DATABASE_URL, hasJwt: !!process.env.JWT_SECRET } });
+  } catch (err) {
+    res.status(500).json({ db: 'error', message: err.message });
+  }
+});
+
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/categories', categoryRoutes);
