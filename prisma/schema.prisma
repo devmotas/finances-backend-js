@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model categories {
+  id                     BigInt         @id @default(autoincrement())
+  created_at             DateTime       @db.Timestamptz(6)
+  expense_group          String?        @db.VarChar(255)
+  flow                   String         @db.VarChar(32)
+  name                   String         @db.VarChar(120)
+  opening_balance_amount Decimal        @db.Decimal(15, 2)
+  updated_at             DateTime?      @db.Timestamptz(6)
+  user_id                BigInt
+  users                  users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkghuylkwuedgl2qahxjt8g41kb")
+  recurrences            recurrences[]
+  transactions           transactions[]
+}
+
+model recurrences {
+  id                BigInt         @id @default(autoincrement())
+  amount            Decimal        @db.Decimal(15, 2)
+  created_at        DateTime       @db.Timestamptz(6)
+  description       String?        @db.VarChar(500)
+  installment_total Int?
+  months            Int
+  start_date        DateTime       @db.Date
+  category_id       BigInt
+  user_id           BigInt
+  categories        categories     @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk1w576bsbwn71xeoc9sib8bqym")
+  users             users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkeclrv9jf5tuxcuccq9y7pbk77")
+  transactions      transactions[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model transactions {
+  id               BigInt       @id @default(autoincrement())
+  amount           Decimal      @db.Decimal(15, 2)
+  created_at       DateTime     @db.Timestamptz(6)
+  date             DateTime     @db.Date
+  description      String?      @db.VarChar(500)
+  flow             String       @db.VarChar(32)
+  recurrence_index Int?
+  schedule         String       @db.VarChar(255)
+  updated_at       DateTime?    @db.Timestamptz(6)
+  category_id      BigInt
+  recurrence_id    BigInt?
+  user_id          BigInt
+  users            users        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkqwv7rmvc8va8rep7piikrojds")
+  recurrences      recurrences? @relation(fields: [recurrence_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkscpo43kqw66yeof9mcljtscgl")
+  categories       categories   @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fksqqi7sneo04kast0o138h19mv")
+}
+
+model users {
+  id                           BigInt         @id @default(autoincrement())
+  created_at                   DateTime       @db.Timestamptz(6)
+  default_recurrence_months    Int
+  email                        String         @unique(map: "uk6dotkott2kjsp8vw4d0m25fb7") @db.VarChar(255)
+  emergency_fund_target_months Int
+  name                         String?        @db.VarChar(255)
+  password                     String         @db.VarChar(255)
+  updated_at                   DateTime?      @db.Timestamptz(6)
+  categories                   categories[]
+  recurrences                  recurrences[]
+  transactions                 transactions[]
+}
