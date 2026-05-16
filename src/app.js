@@ -20,9 +20,8 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:42
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Permite requests sem origin (Postman, curl) e origens na whitelist
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`Origin não permitida: ${origin}`));
+      callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
