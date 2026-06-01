@@ -46,6 +46,7 @@ async function create(userId, { categoryId, description, amount, date, schedule 
       date: new Date(date),
       schedule,
       flow: category.flow,
+      created_at: new Date(),
     },
     include: { categories: true },
   });

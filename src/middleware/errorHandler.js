@@ -21,7 +21,7 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  console.error(err);
+  console.error('[500]', err?.constructor?.name, err?.message, err?.code ?? '', err?.meta ?? '');
   res.status(500).json({
     status: 500,
     error: 'InternalServerError',

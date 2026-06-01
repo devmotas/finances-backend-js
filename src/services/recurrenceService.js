@@ -39,6 +39,7 @@ async function create(userId, { categoryId, description, amount, startDate, mont
       start_date: new Date(startDate),
       months,
       installment_total: installmentTotal ?? null,
+      created_at: new Date(),
     },
   });
 
@@ -68,6 +69,7 @@ async function create(userId, { categoryId, description, amount, startDate, mont
       flow: category.flow,
       recurrence_id: recurrence.id,
       recurrence_index: i + 1,
+      created_at: new Date(),
     });
   }
 

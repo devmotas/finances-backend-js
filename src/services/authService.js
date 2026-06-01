@@ -23,6 +23,7 @@ async function register({ name, email, password }) {
       password: hashed,
       default_recurrence_months: 12,
       emergency_fund_target_months: 6,
+      created_at: new Date(),
     },
   });
 
@@ -33,6 +34,7 @@ async function register({ name, email, password }) {
       flow: 'investment',
       expense_group: null,
       opening_balance_amount: 0,
+      created_at: new Date(),
     })),
   });
 
