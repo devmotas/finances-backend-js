@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const auth = require('../middleware/auth');
+const { parseYearMonth } = require('../validation/common');
 const reportService = require('../services/reportService');
 
 const router = Router();
@@ -7,14 +8,9 @@ router.use(auth);
 
 router.get('/export', async (req, res, next) => {
   try {
-    const year = Number(req.query.year);
-    const month = Number(req.query.month);
+    const { year, month } = parseYearMonth(req.query);
     const format = req.query.format ?? 'csv';
     const period = req.query.period ?? 'month';
-
-    if (!year || !month) {
-      return res.status(400).json({ message: 'Informe year e month.' });
-    }
 
     const { from, to } = reportService.resolveRange(year, month, period);
 

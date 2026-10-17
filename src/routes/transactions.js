@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
+const { parseId, parseYearMonth } = require('../validation/common');
 const transactionService = require('../services/transactionService');
 
 const router = Router();
@@ -18,9 +19,7 @@ const txSchema = z.object({
 
 router.get('/', async (req, res, next) => {
   try {
-    const year = Number(req.query.year);
-    const month = Number(req.query.month);
-    if (!year || !month) return res.status(400).json({ message: 'Informe year e month.' });
+    const { year, month } = parseYearMonth(req.query);
     const txs = await transactionService.listByMonth(req.userId, year, month);
     res.json(txs);
   } catch (err) {
@@ -42,7 +41,7 @@ router.put('/:id', async (req, res, next) => {
   try {
     const body = txSchema.parse(req.body);
     const applyToFutureSeries = req.query.applyToFutureSeries === 'true';
-    const tx = await transactionService.update(req.userId, BigInt(req.params.id), body, applyToFutureSeries);
+    const tx = await transactionService.update(req.userId, parseId(req.params), body, applyToFutureSeries);
     res.json(tx);
   } catch (err) {
     next(err);
@@ -52,7 +51,7 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const applyToFutureSeries = req.query.applyToFutureSeries === 'true';
-    await transactionService.remove(req.userId, BigInt(req.params.id), applyToFutureSeries);
+    await transactionService.remove(req.userId, parseId(req.params), applyToFutureSeries);
     res.status(204).send();
   } catch (err) {
     next(err);

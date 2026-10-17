@@ -2,19 +2,20 @@ const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
 const userService = require('../services/userService');
+const { PASSWORD_MIN, NAME_MAX } = require('../validation/common');
 
 const router = Router();
 router.use(auth);
 
 const patchSchema = z.object({
-  name: z.string().min(2).max(120).optional(),
+  name: z.string().min(2).max(NAME_MAX).optional(),
   defaultRecurrenceMonths: z.number().int().min(1).max(120).optional(),
   emergencyFundTargetMonths: z.number().int().min(1).max(120).optional(),
 });
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(6),
+  newPassword: z.string().min(PASSWORD_MIN),
 });
 
 router.get('/me', async (req, res, next) => {

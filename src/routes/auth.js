@@ -1,13 +1,14 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const authService = require('../services/authService');
+const { PASSWORD_MIN, NAME_MAX } = require('../validation/common');
 
 const router = Router();
 
 const registerSchema = z.object({
-  name: z.string().min(2).max(120),
+  name: z.string().trim().min(2).max(NAME_MAX),
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().min(PASSWORD_MIN),
 });
 
 const loginSchema = z.object({

@@ -1,6 +1,7 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { addMonthsToDate } = require('../utils/dates');
+const { validateAmount } = require('../domain/amount');
 
 function todayFirstDay() {
   const now = new Date();
@@ -21,6 +22,8 @@ async function create(userId, { categoryId, description, amount, startDate, mont
       'Não é possível criar recorrência para categorias de investimento. Use a tela de investimentos e registre cada mês (aportes e resgates são pontuais).'
     );
   }
+
+  validateAmount(amount, category.flow);
 
   if (installmentTotal != null && installmentTotal !== months) {
     throw new BadRequestError('Para parcelamento, o número de meses deve ser igual ao total de parcelas.');

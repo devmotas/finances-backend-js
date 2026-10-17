@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
+const { parseId } = require('../validation/common');
 const categoryService = require('../services/categoryService');
 
 const router = Router();
@@ -38,7 +39,7 @@ router.post('/', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const body = categorySchema.parse(req.body);
-    const cat = await categoryService.update(req.userId, BigInt(req.params.id), body);
+    const cat = await categoryService.update(req.userId, parseId(req.params), body);
     res.json(cat);
   } catch (err) {
     next(err);
@@ -47,7 +48,7 @@ router.put('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
-    await categoryService.remove(req.userId, BigInt(req.params.id));
+    await categoryService.remove(req.userId, parseId(req.params));
     res.status(204).send();
   } catch (err) {
     next(err);
