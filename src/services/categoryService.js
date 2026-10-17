@@ -26,7 +26,6 @@ async function create(userId, { name, flow, expenseGroup, openingBalanceAmount }
       flow,
       expense_group: expenseGroup ?? null,
       opening_balance_amount: normalizedOpeningBalance(flow, openingBalanceAmount),
-      created_at: new Date(),
     },
   });
   return toDto(category);
