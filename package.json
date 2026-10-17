@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test",
-    "postinstall": "prisma generate"
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "postinstall": "prisma generate",
+    "test:integration": "node --test --test-concurrency=1 \"test/integration/**/*.test.js\""
   },
   "dependencies": {
     "@prisma/client": "^6.2.0",

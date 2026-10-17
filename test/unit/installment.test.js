@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { seriesDescription } = require('../src/domain/installment');
+const { seriesDescription } = require('../../src/domain/installment');
 
 test('série comum mantém a descrição ou vira nula', () => {
   assert.equal(seriesDescription('  Aluguel ', 3, null), 'Aluguel');

@@ -1,8 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { ZodError } = require('zod');
-const { parseId, parseYearMonth } = require('../src/validation/common');
-const { validateAmount } = require('../src/domain/amount');
+const { parseId, parseYearMonth } = require('../../src/validation/common');
+const { validateAmount } = require('../../src/domain/amount');
 
 test('id não numérico vira erro de validação (400), não 500', () => {
   assert.throws(() => parseId({ id: 'abc' }), ZodError);

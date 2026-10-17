@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { addMonthsToDate } = require('../src/utils/dates');
+const { addMonthsToDate } = require('../../src/utils/dates');
 
 function series(start, months) {
   return Array.from({ length: months }, (_, i) => addMonthsToDate(start, i).toISOString().slice(0, 10));

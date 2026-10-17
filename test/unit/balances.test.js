@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Decimal } = require('@prisma/client/runtime/library');
-const { computeBalances } = require('../src/domain/balances');
+const { computeBalances } = require('../../src/domain/balances');
 
 const d = (n) => new Decimal(n);
 

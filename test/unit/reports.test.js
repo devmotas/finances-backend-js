@@ -1,8 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveRange, reportFileBaseName, REPORT_PERIOD } = require('../src/reports/period');
-const { buildCsv } = require('../src/reports/csv');
-const { buildPdf } = require('../src/reports/pdf');
+const { resolveRange, reportFileBaseName, REPORT_PERIOD } = require('../../src/reports/period');
+const { buildCsv } = require('../../src/reports/csv');
+const { buildPdf } = require('../../src/reports/pdf');
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
