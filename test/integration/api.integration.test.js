@@ -20,11 +20,11 @@ let baseUrl;
 let token;
 let categoryId;
 
-async function call(method, url, body) {
+async function call(method, url, payload) {
   const response = await fetch(baseUrl + url, {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
   });
   const isJson = (response.headers.get('content-type') ?? '').includes('application/json');
   const body = isJson ? await response.json() : await response.text();
