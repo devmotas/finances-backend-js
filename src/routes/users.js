@@ -46,13 +46,4 @@ router.post('/me/password', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
-  try {
-    const user = await userService.findById(BigInt(req.params.id));
-    res.json(user);
-  } catch (err) {
-    next(err);
-  }
-});
-
 module.exports = router;
