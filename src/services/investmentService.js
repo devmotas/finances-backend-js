@@ -1,6 +1,7 @@
 const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = require('../db/prisma');
 const { listByMonth } = require('./transactionService');
+const { FLOW, INVESTMENT_CHART_WINDOW_MONTHS } = require('../domain/constants');
 
 function addYM(year, month, delta) {
   const d = new Date(Date.UTC(year, month - 1 + delta, 1));
@@ -31,35 +32,34 @@ function round2(n) {
 
 async function monthView(userId, year, month) {
   const uid = BigInt(userId);
-  const windowStart = addYM(year, month, -11);
+  const windowStart = addYM(year, month, 1 - INVESTMENT_CHART_WINDOW_MONTHS);
   const windowEnd = { year, month };
 
-  // Transações do mês filtradas por investment (via DTO do transactionService)
   const allMonthTxs = await listByMonth(userId, year, month);
-  const monthTransactions = allMonthTxs.filter((t) => t.flow === 'investment');
+  const monthTransactions = allMonthTxs.filter((t) => t.flow === FLOW.INVESTMENT);
   const monthTotal = monthTransactions.reduce((acc, t) => acc + t.amount, 0);
 
   const [openingAgg, accBeforeAgg, priorInWindowAgg, windowTxsRaw] = await Promise.all([
     prisma.categories.aggregate({
       _sum: { opening_balance_amount: true },
-      where: { user_id: uid, flow: 'investment' },
+      where: { user_id: uid, flow: FLOW.INVESTMENT },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
-      where: { user_id: uid, flow: 'investment', date: { lt: firstDay(year, month) } },
+      where: { user_id: uid, flow: FLOW.INVESTMENT, date: { lt: firstDay(year, month) } },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
       where: {
         user_id: uid,
-        flow: 'investment',
+        flow: FLOW.INVESTMENT,
         date: { lt: firstDay(windowStart.year, windowStart.month) },
       },
     }),
     prisma.transactions.findMany({
       where: {
         user_id: uid,
-        flow: 'investment',
+        flow: FLOW.INVESTMENT,
         date: {
           gte: firstDay(windowStart.year, windowStart.month),
           lte: lastDay(windowEnd.year, windowEnd.month),
@@ -78,9 +78,8 @@ async function monthView(userId, year, month) {
   const positionBeforeMonth = openingBalanceTotal + accumulatedBeforeMonth;
   const positionThroughMonthEnd = openingBalanceTotal + totalThroughMonthEnd;
 
-  // Categorias de investimento ordenadas por nome depois id
   const investmentCats = await prisma.categories.findMany({
-    where: { user_id: uid, flow: 'investment' },
+    where: { user_id: uid, flow: FLOW.INVESTMENT },
     orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
 
@@ -135,7 +134,7 @@ async function monthView(userId, year, month) {
         _sum: { amount: true },
         where: {
           user_id: uid,
-          flow: 'investment',
+          flow: FLOW.INVESTMENT,
           category_id: cat.id,
           date: { lte: endSelected },
         },

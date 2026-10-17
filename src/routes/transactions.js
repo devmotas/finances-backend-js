@@ -1,20 +1,19 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
-const { parseId, parseYearMonth } = require('../validation/common');
+const { parseId, parseYearMonth, DESCRIPTION_MAX, ISO_DATE } = require('../validation/common');
+const { SCHEDULE } = require('../domain/constants');
 const transactionService = require('../services/transactionService');
 
 const router = Router();
 router.use(auth);
 
-const SCHEDULES = ['fixed', 'variable'];
-
 const txSchema = z.object({
   categoryId: z.number().int().positive(),
-  description: z.string().max(500).nullable().optional(),
+  description: z.string().max(DESCRIPTION_MAX).nullable().optional(),
   amount: z.number(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  schedule: z.enum(SCHEDULES),
+  date: z.string().regex(ISO_DATE),
+  schedule: z.nativeEnum(SCHEDULE),
 });
 
 router.get('/', async (req, res, next) => {

@@ -3,6 +3,7 @@ const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { addMonthsToDate } = require('../utils/dates');
 const { validateAmount } = require('../domain/amount');
 const { seriesDescription } = require('../domain/installment');
+const { FLOW, SCHEDULE } = require('../domain/constants');
 
 async function create(userId, { categoryId, description, amount, startDate, months, installmentTotal }) {
   const user = await prisma.users.findUnique({ where: { id: BigInt(userId) } });
@@ -13,7 +14,7 @@ async function create(userId, { categoryId, description, amount, startDate, mont
   });
   if (!category) throw new NotFoundError('Categoria não encontrada.');
 
-  if (category.flow === 'investment') {
+  if (category.flow === FLOW.INVESTMENT) {
     throw new BadRequestError(
       'Não é possível criar recorrência para categorias de investimento. Use a tela de investimentos e registre cada mês (aportes e resgates são pontuais).'
     );
@@ -49,7 +50,7 @@ async function create(userId, { categoryId, description, amount, startDate, mont
       description: txDescription,
       amount,
       date: occurrenceDate,
-      schedule: 'fixed',
+      schedule: SCHEDULE.FIXED,
       flow: category.flow,
       recurrence_id: recurrence.id,
       recurrence_index: i + 1,

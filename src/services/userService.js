@@ -1,4 +1,4 @@
-const bcrypt = require('bcryptjs');
+const { hashPassword, passwordMatches } = require('../security/tokens');
 const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 
@@ -19,11 +19,7 @@ async function patchMe(id, { name, defaultRecurrenceMonths, emergencyFundTargetM
   const data = {};
 
   if (name != null) {
-    const trimmed = name.trim();
-    if (trimmed.length < 2 || trimmed.length > 120) {
-      throw new BadRequestError('O nome deve ter entre 2 e 120 caracteres.');
-    }
-    data.name = trimmed;
+    data.name = name;
   }
   if (defaultRecurrenceMonths != null) data.default_recurrence_months = defaultRecurrenceMonths;
   if (emergencyFundTargetMonths != null) data.emergency_fund_target_months = emergencyFundTargetMonths;
@@ -36,14 +32,16 @@ async function changePassword(id, { currentPassword, newPassword }) {
   const user = await prisma.users.findUnique({ where: { id: BigInt(id) } });
   if (!user) throw new NotFoundError('Usuário não encontrado.');
 
-  const match = await bcrypt.compare(currentPassword, user.password);
+  const match = await passwordMatches(currentPassword, user.password);
   if (!match) throw new BadRequestError('Senha atual incorreta.');
 
-  const sameAsOld = await bcrypt.compare(newPassword, user.password);
+  const sameAsOld = await passwordMatches(newPassword, user.password);
   if (sameAsOld) throw new BadRequestError('A nova senha deve ser diferente da atual.');
 
-  const hashed = await bcrypt.hash(newPassword, 10);
-  await prisma.users.update({ where: { id: BigInt(id) }, data: { password: hashed } });
+  await prisma.users.update({
+    where: { id: BigInt(id) },
+    data: { password: await hashPassword(newPassword) },
+  });
 }
 
 function toDto(user) {
@@ -58,4 +56,4 @@ function toDto(user) {
   };
 }
 
-module.exports = { findById, patchMe, changePassword };
+module.exports = { findById, patchMe, changePassword, toUserDto: toDto };

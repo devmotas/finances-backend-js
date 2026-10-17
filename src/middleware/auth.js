@@ -1,16 +1,16 @@
-const jwt = require('jsonwebtoken');
+const { userIdFromToken } = require('../security/tokens');
 const { UnauthorizedError } = require('../errors/AppError');
+
+const BEARER_PREFIX = 'Bearer ';
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  if (!header || !header.startsWith(BEARER_PREFIX)) {
     return next(new UnauthorizedError('Token não fornecido.'));
   }
-  const token = header.slice(7);
+  const token = header.slice(BEARER_PREFIX.length);
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    // sub é armazenado como string para compatibilidade com BigInt
-    req.userId = BigInt(payload.sub);
+    req.userId = userIdFromToken(token);
     next();
   } catch {
     next(new UnauthorizedError('Token inválido ou expirado.'));

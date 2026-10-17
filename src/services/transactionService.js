@@ -2,6 +2,7 @@ const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { validateAmount } = require('../domain/amount');
 const { seriesDescription } = require('../domain/installment');
+const { SCHEDULE } = require('../domain/constants');
 
 function firstDay(year, month) {
   return new Date(Date.UTC(year, month - 1, 1));
@@ -37,7 +38,7 @@ async function create(userId, { categoryId, description, amount, date, schedule 
   if (!category) throw new NotFoundError('Categoria não encontrada.');
 
   validateAmount(amount, category.flow);
-  if (schedule === 'fixed') {
+  if (schedule === SCHEDULE.FIXED) {
     throw new BadRequestError('Lançamentos fixos são criados como série em /recurrences.');
   }
 
@@ -66,8 +67,7 @@ async function update(userId, transactionId, { categoryId, description, amount, 
   if (!category) throw new NotFoundError('Categoria não encontrada.');
 
   validateAmount(amount, category.flow);
-  // "fixo" significa pertencer a uma série; o valor enviado pelo cliente é ignorado
-  const schedule = transaction.recurrence_id != null ? 'fixed' : 'variable';
+  const schedule = scheduleOf(transaction);
 
   if (applyToFutureSeries && transaction.recurrence_id != null) {
     const txDate = new Date(transaction.date);
@@ -155,6 +155,10 @@ async function findOrThrow(userId, transactionId) {
   });
   if (!tx) throw new NotFoundError('Transação não encontrada.');
   return tx;
+}
+
+function scheduleOf(transaction) {
+  return transaction.recurrence_id != null ? SCHEDULE.FIXED : SCHEDULE.VARIABLE;
 }
 
 function toDto(tx) {

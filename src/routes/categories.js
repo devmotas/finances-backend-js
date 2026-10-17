@@ -1,24 +1,24 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
-const { parseId } = require('../validation/common');
+const { parseId, CATEGORY_NAME_MAX } = require('../validation/common');
+const { FLOW, EXPENSE_GROUP } = require('../domain/constants');
 const categoryService = require('../services/categoryService');
 
 const router = Router();
 router.use(auth);
 
-const FLOWS = ['income', 'expense', 'investment'];
-const EXPENSE_GROUPS = ['essential', 'nonEssential'];
+const onlyExpensesHaveGroup = (category) =>
+  (category.flow === FLOW.EXPENSE) === (category.expenseGroup != null);
 
-// expenseGroup é obrigatório em saídas e proibido nos demais tipos
 const categorySchema = z
   .object({
-    name: z.string().trim().min(1).max(120),
-    flow: z.enum(FLOWS),
-    expenseGroup: z.enum(EXPENSE_GROUPS).nullable().optional(),
+    name: z.string().trim().min(1).max(CATEGORY_NAME_MAX),
+    flow: z.nativeEnum(FLOW),
+    expenseGroup: z.nativeEnum(EXPENSE_GROUP).nullable().optional(),
     openingBalanceAmount: z.number().optional().nullable(),
   })
-  .refine((c) => (c.flow === 'expense') === (c.expenseGroup != null), {
+  .refine(onlyExpensesHaveGroup, {
     path: ['expenseGroup'],
     message: 'Informe essencial ou não essencial apenas para categorias de saída.',
   });

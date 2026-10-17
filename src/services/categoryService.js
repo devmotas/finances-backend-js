@@ -1,5 +1,6 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, ConflictError, UnprocessableError } = require('../errors/AppError');
+const { FLOW } = require('../domain/constants');
 
 async function listAll(userId) {
   const cats = await prisma.categories.findMany({ where: { user_id: BigInt(userId) } });
@@ -83,7 +84,7 @@ async function findOrThrow(userId, categoryId) {
 }
 
 function normalizedOpeningBalance(flow, raw) {
-  if (flow !== 'investment') return 0;
+  if (flow !== FLOW.INVESTMENT) return 0;
   return raw ?? 0;
 }
 

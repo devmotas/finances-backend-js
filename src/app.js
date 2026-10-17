@@ -13,7 +13,9 @@ const reportRoutes = require('./routes/reports');
 
 const app = express();
 
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? 'http://localhost:4200')
+const DEFAULT_ALLOWED_ORIGIN = 'http://localhost:4200';
+
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? DEFAULT_ALLOWED_ORIGIN)
   .split(',')
   .map((s) => s.trim());
 

@@ -2,6 +2,7 @@ const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = require('../db/prisma');
 const { NotFoundError } = require('../errors/AppError');
 const { computeBalances } = require('../domain/balances');
+const { FLOW } = require('../domain/constants');
 
 async function summary(userId, year, month) {
   const end = new Date(Date.UTC(year, month, 0));
@@ -14,23 +15,23 @@ async function summary(userId, year, month) {
   const [openingAgg, incomeAgg, expenseAgg, investmentAgg, monthExpenseAgg] = await Promise.all([
     prisma.categories.aggregate({
       _sum: { opening_balance_amount: true },
-      where: { user_id: uid, flow: 'investment' },
+      where: { user_id: uid, flow: FLOW.INVESTMENT },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
-      where: { user_id: uid, flow: 'income', date: { lte: end } },
+      where: { user_id: uid, flow: FLOW.INCOME, date: { lte: end } },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
-      where: { user_id: uid, flow: 'expense', date: { lte: end } },
+      where: { user_id: uid, flow: FLOW.EXPENSE, date: { lte: end } },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
-      where: { user_id: uid, flow: 'investment', date: { lte: end } },
+      where: { user_id: uid, flow: FLOW.INVESTMENT, date: { lte: end } },
     }),
     prisma.transactions.aggregate({
       _sum: { amount: true },
-      where: { user_id: uid, flow: 'expense', date: { gte: monthStart, lte: end } },
+      where: { user_id: uid, flow: FLOW.EXPENSE, date: { gte: monthStart, lte: end } },
     }),
   ]);
 
