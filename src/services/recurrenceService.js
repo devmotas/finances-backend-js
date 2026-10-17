@@ -1,10 +1,6 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
-
-function addMonthsToDate(dateStr, monthDelta) {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1 + monthDelta, day));
-}
+const { addMonthsToDate } = require('../utils/dates');
 
 function todayFirstDay() {
   const now = new Date();
