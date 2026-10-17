@@ -33,6 +33,9 @@ async function create(userId, { name, flow, expenseGroup, openingBalanceAmount }
 
 async function update(userId, categoryId, { name, flow, expenseGroup, openingBalanceAmount }) {
   const category = await findOrThrow(userId, categoryId);
+  if (category.flow !== flow) {
+    throw new UnprocessableError('Não é possível mudar o tipo (entrada, saída ou investimento) de uma categoria.');
+  }
 
   if (category.name.toLowerCase() !== name.toLowerCase()) {
     const dup = await prisma.categories.findFirst({
@@ -59,12 +62,13 @@ async function update(userId, categoryId, { name, flow, expenseGroup, openingBal
 async function remove(userId, categoryId) {
   const cat = await findOrThrow(userId, categoryId);
 
-  const hasTxs = await prisma.transactions.findFirst({
-    where: { category_id: BigInt(categoryId) },
-  });
-  if (hasTxs) {
+  const [hasTxs, hasSeries] = await Promise.all([
+    prisma.transactions.findFirst({ where: { category_id: BigInt(categoryId) } }),
+    prisma.recurrences.findFirst({ where: { category_id: BigInt(categoryId) } }),
+  ]);
+  if (hasTxs || hasSeries) {
     throw new UnprocessableError(
-      `A categoria '${cat.name}' possui transações vinculadas e não pode ser excluída.`
+      `A categoria '${cat.name}' possui lançamentos ou séries vinculadas e não pode ser excluída.`
     );
   }
   await prisma.categories.delete({ where: { id: BigInt(categoryId) } });

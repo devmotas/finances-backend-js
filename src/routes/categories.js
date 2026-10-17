@@ -10,12 +10,18 @@ router.use(auth);
 const FLOWS = ['income', 'expense', 'investment'];
 const EXPENSE_GROUPS = ['essential', 'nonEssential'];
 
-const categorySchema = z.object({
-  name: z.string().min(1).max(120),
-  flow: z.enum(FLOWS),
-  expenseGroup: z.enum(EXPENSE_GROUPS).nullable().optional(),
-  openingBalanceAmount: z.number().optional().nullable(),
-});
+// expenseGroup é obrigatório em saídas e proibido nos demais tipos
+const categorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    flow: z.enum(FLOWS),
+    expenseGroup: z.enum(EXPENSE_GROUPS).nullable().optional(),
+    openingBalanceAmount: z.number().optional().nullable(),
+  })
+  .refine((c) => (c.flow === 'expense') === (c.expenseGroup != null), {
+    path: ['expenseGroup'],
+    message: 'Informe essencial ou não essencial apenas para categorias de saída.',
+  });
 
 router.get('/', async (req, res, next) => {
   try {
