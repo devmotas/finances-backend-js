@@ -1,6 +1,7 @@
 const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = require('../db/prisma');
 const { NotFoundError } = require('../errors/AppError');
+const { computeBalances } = require('../domain/balances');
 
 async function summary(userId, year, month) {
   const end = new Date(Date.UTC(year, month, 0));
@@ -39,8 +40,16 @@ async function summary(userId, year, month) {
   const investmentTotal = new Decimal(investmentAgg._sum.amount ?? 0);
   const monthExpenseTotal = new Decimal(monthExpenseAgg._sum.amount ?? 0);
 
-  const accumulatedBalance = incomeTotal.minus(expenseTotal).minus(investmentTotal).plus(opening);
-  const totalEmergencyReserve = accumulatedBalance.plus(investmentTotal);
+  const {
+    cashBalance: accumulatedBalance,
+    investedPosition,
+    totalReserve: totalEmergencyReserve,
+  } = computeBalances({
+    opening,
+    income: incomeTotal,
+    expense: expenseTotal,
+    investment: investmentTotal,
+  });
 
   const monthsCovered = monthExpenseTotal.isZero()
     ? null
@@ -53,6 +62,7 @@ async function summary(userId, year, month) {
     openingBalanceAmount: opening.toDecimalPlaces(2).toNumber(),
     monthExpenseTotal: monthExpenseTotal.toDecimalPlaces(2).toNumber(),
     cumulativeInvestmentContributions: investmentTotal.toDecimalPlaces(2).toNumber(),
+    investedPosition: investedPosition.toDecimalPlaces(2).toNumber(),
     totalEmergencyReserve: totalEmergencyReserve.toDecimalPlaces(2).toNumber(),
     emergencyFundTargetMonths: user.emergency_fund_target_months,
     monthsOfReserveCovered: monthsCovered,
