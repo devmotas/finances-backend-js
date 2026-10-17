@@ -1,3 +1,6 @@
 node_modules/
 .env
 .vercel
+
+# Notas locais de trabalho (tickets, mapeamentos). Repo público: não versionar.
+.scratch/
