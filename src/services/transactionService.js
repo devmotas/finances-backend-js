@@ -1,6 +1,7 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { validateAmount } = require('../domain/amount');
+const { seriesDescription } = require('../domain/installment');
 
 function firstDay(year, month) {
   return new Date(Date.UTC(year, month - 1, 1));
@@ -72,29 +73,40 @@ async function update(userId, transactionId, { categoryId, description, amount, 
     const txDate = new Date(transaction.date);
     const monthStart = new Date(Date.UTC(txDate.getUTCFullYear(), txDate.getUTCMonth(), 1));
 
-    const futureTxs = await prisma.transactions.findMany({
-      where: {
-        recurrence_id: transaction.recurrence_id,
-        user_id: BigInt(userId),
-        date: { gte: monthStart },
-      },
-    });
+    const [recurrence, futureTxs] = await Promise.all([
+      prisma.recurrences.findUnique({ where: { id: transaction.recurrence_id } }),
+      prisma.transactions.findMany({
+        where: {
+          recurrence_id: transaction.recurrence_id,
+          user_id: BigInt(userId),
+          date: { gte: monthStart },
+        },
+      }),
+    ]);
 
-    await prisma.$transaction(
-      futureTxs.map((t) =>
+    await prisma.$transaction([
+      prisma.recurrences.update({
+        where: { id: recurrence.id },
+        data: {
+          category_id: BigInt(categoryId),
+          description: seriesDescription(description, null, null),
+          amount,
+        },
+      }),
+      ...futureTxs.map((t) =>
         prisma.transactions.update({
           where: { id: t.id },
           data: {
             category_id: BigInt(categoryId),
-            description: description?.trim() || null,
+            description: seriesDescription(description, t.recurrence_index, recurrence.installment_total),
             amount,
             schedule,
             flow: category.flow,
             ...(t.id === transaction.id ? { date: new Date(date) } : {}),
           },
         })
-      )
-    );
+      ),
+    ]);
 
     const updated = await prisma.transactions.findUnique({
       where: { id: BigInt(transactionId) },

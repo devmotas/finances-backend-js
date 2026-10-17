@@ -1,7 +1,6 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
-const { parseId } = require('../validation/common');
 const recurrenceService = require('../services/recurrenceService');
 
 const router = Router();
@@ -16,36 +15,12 @@ const createSchema = z.object({
   installmentTotal: z.number().int().min(1).nullable().optional(),
 });
 
-const updateSchema = z.object({
-  categoryId: z.number().int().positive(),
-  description: z.string().max(500).nullable().optional(),
-  amount: z.number(),
-});
 
 router.post('/', async (req, res, next) => {
   try {
     const body = createSchema.parse(req.body);
     const result = await recurrenceService.create(req.userId, body);
     res.status(201).json(result);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.put('/:id', async (req, res, next) => {
-  try {
-    const body = updateSchema.parse(req.body);
-    await recurrenceService.update(req.userId, parseId(req.params), body);
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/:id', async (req, res, next) => {
-  try {
-    await recurrenceService.deleteFuture(req.userId, parseId(req.params));
-    res.status(204).send();
   } catch (err) {
     next(err);
   }

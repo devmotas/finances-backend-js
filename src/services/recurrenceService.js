@@ -2,11 +2,7 @@ const prisma = require('../db/prisma');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { addMonthsToDate } = require('../utils/dates');
 const { validateAmount } = require('../domain/amount');
-
-function todayFirstDay() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
+const { seriesDescription } = require('../domain/installment');
 
 async function create(userId, { categoryId, description, amount, startDate, months, installmentTotal }) {
   const user = await prisma.users.findUnique({ where: { id: BigInt(userId) } });
@@ -45,18 +41,7 @@ async function create(userId, { categoryId, description, amount, startDate, mont
   const txData = [];
   for (let i = 0; i < months; i++) {
     const occurrenceDate = addMonthsToDate(startDate, i);
-    const baseDesc = (description ?? '').trim();
-    let txDescription;
-
-    if (installmentTotal != null) {
-      const x = i + 1;
-      txDescription =
-        baseDesc === ''
-          ? `Parcela ${x} de ${installmentTotal}`
-          : `Parcela ${x} de ${installmentTotal}: ${baseDesc}`;
-    } else {
-      txDescription = baseDesc || null;
-    }
+    const txDescription = seriesDescription(description, i + 1, installmentTotal);
 
     txData.push({
       user_id: BigInt(userId),
@@ -80,78 +65,4 @@ async function create(userId, { categoryId, description, amount, startDate, mont
   };
 }
 
-async function update(userId, recurrenceId, { categoryId, description, amount }) {
-  const recurrence = await prisma.recurrences.findFirst({
-    where: { id: BigInt(recurrenceId), user_id: BigInt(userId) },
-  });
-  if (!recurrence) throw new NotFoundError('Recorrência não encontrada.');
-
-  const category = await prisma.categories.findFirst({
-    where: { id: BigInt(categoryId), user_id: BigInt(userId) },
-  });
-  if (!category) throw new NotFoundError('Categoria não encontrada.');
-
-  const cutoff = todayFirstDay();
-  const futureTxs = await prisma.transactions.findMany({
-    where: {
-      recurrence_id: BigInt(recurrenceId),
-      user_id: BigInt(userId),
-      date: { gte: cutoff },
-    },
-  });
-
-  await prisma.recurrences.update({
-    where: { id: BigInt(recurrenceId) },
-    data: {
-      category_id: BigInt(categoryId),
-      description: description?.trim() || null,
-      amount,
-    },
-  });
-
-  const installmentTotal = recurrence.installment_total;
-
-  await prisma.$transaction(
-    futureTxs.map((t) => {
-      let txDescription;
-      if (installmentTotal != null) {
-        const idx = t.recurrence_index ?? 1;
-        const baseDesc = (description ?? '').trim();
-        txDescription =
-          baseDesc === ''
-            ? `Parcela ${idx} de ${installmentTotal}`
-            : `Parcela ${idx} de ${installmentTotal}: ${baseDesc}`;
-      } else {
-        txDescription = (description ?? '').trim() || null;
-      }
-
-      return prisma.transactions.update({
-        where: { id: t.id },
-        data: {
-          category_id: BigInt(categoryId),
-          description: txDescription,
-          amount,
-          flow: category.flow,
-        },
-      });
-    })
-  );
-}
-
-async function deleteFuture(userId, recurrenceId) {
-  const recurrence = await prisma.recurrences.findFirst({
-    where: { id: BigInt(recurrenceId), user_id: BigInt(userId) },
-  });
-  if (!recurrence) throw new NotFoundError('Recorrência não encontrada.');
-
-  const cutoff = todayFirstDay();
-  await prisma.transactions.deleteMany({
-    where: {
-      recurrence_id: BigInt(recurrenceId),
-      user_id: BigInt(userId),
-      date: { gte: cutoff },
-    },
-  });
-}
-
-module.exports = { create, update, deleteFuture };
+module.exports = { create };
