@@ -99,11 +99,27 @@ Dinheiro disponível fora dos investimentos no fim do mês selecionado; acumula 
 _Avoid_: saldo acumulado, sobrou, saldo da conta
 
 **Conta de reserva**:
-Conta de investimento marcada pelo usuário como parte da reserva de emergência.
+Conta de investimento marcada pelo usuário como parte da reserva de emergência; quase nunca é mexida.
 _Avoid_: conta segura
 
+**Reserva de curto prazo**:
+Conta pequena e de acesso rápido de onde o usuário pega dinheiro emprestado num mês apertado e depois devolve; tem um valor-alvo.
+_Avoid_: reserva da reserva, colchão, caixinha
+
+**Pegar emprestado**:
+Tirar dinheiro da reserva de curto prazo para o caixa; não é entrada.
+_Avoid_: resgate (para esta conta), entrada
+
+**Devolver**:
+Colocar de volta na reserva de curto prazo o dinheiro pego emprestado; não é saída.
+_Avoid_: aporte (para esta conta), pagamento
+
+**Valor-alvo**:
+Quanto a reserva de curto prazo deve ter quando está completa; a diferença para o saldo é o quanto falta devolver.
+_Avoid_: limite, teto
+
 **Reserva de emergência**:
-Saldo em caixa somado ao patrimônio das contas de reserva.
+Soma da reserva de curto prazo com o patrimônio das contas de reserva; o saldo em caixa não entra.
 _Avoid_: reserva total, patrimônio
 
 **Despesa de referência**:
