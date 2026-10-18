@@ -25,54 +25,94 @@ model categories {
 }
 
 model recurrences {
-  id                BigInt         @id @default(autoincrement())
-  amount            Decimal        @db.Decimal(15, 2)
-  created_at        DateTime       @default(now()) @db.Timestamptz(6)
-  description       String?        @db.VarChar(500)
-  installment_total Int?
-  months            Int
-  start_date        DateTime       @db.Date
-  category_id       BigInt
-  user_id           BigInt
-  categories        categories     @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk1w576bsbwn71xeoc9sib8bqym")
-  users             users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkeclrv9jf5tuxcuccq9y7pbk77")
-  transactions      transactions[]
+  id                 BigInt         @id @default(autoincrement())
+  amount             Decimal        @db.Decimal(15, 2)
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  description        String?        @db.VarChar(500)
+  installment_total  Int?
+  months             Int?
+  start_date         DateTime       @db.Date
+  kind               String         @db.VarChar(32)
+  first_index        Int            @default(1)
+  end_month          DateTime?      @db.Date
+  materialized_until DateTime       @db.Date
+  category_id        BigInt
+  user_id            BigInt
+  categories         categories     @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk1w576bsbwn71xeoc9sib8bqym")
+  users              users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkeclrv9jf5tuxcuccq9y7pbk77")
+  transactions       transactions[]
 
   @@index([user_id])
 }
 
 model transactions {
-  id               BigInt       @id @default(autoincrement())
-  amount           Decimal      @db.Decimal(15, 2)
-  created_at       DateTime     @default(now()) @db.Timestamptz(6)
-  date             DateTime     @db.Date
-  description      String?      @db.VarChar(500)
-  flow             String       @db.VarChar(32)
-  recurrence_index Int?
-  schedule         String       @db.VarChar(255)
-  updated_at       DateTime?    @updatedAt @db.Timestamptz(6)
-  category_id      BigInt
-  recurrence_id    BigInt?
-  user_id          BigInt
-  users            users        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkqwv7rmvc8va8rep7piikrojds")
-  recurrences      recurrences? @relation(fields: [recurrence_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkscpo43kqw66yeof9mcljtscgl")
-  categories       categories   @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fksqqi7sneo04kast0o138h19mv")
+  id                    BigInt               @id @default(autoincrement())
+  amount                Decimal              @db.Decimal(15, 2)
+  created_at            DateTime             @default(now()) @db.Timestamptz(6)
+  date                  DateTime             @db.Date
+  description           String?              @db.VarChar(500)
+  flow                  String               @db.VarChar(32)
+  recurrence_index      Int?
+  schedule              String?              @db.VarChar(255)
+  updated_at            DateTime?            @updatedAt @db.Timestamptz(6)
+  category_id           BigInt?
+  recurrence_id         BigInt?
+  user_id               BigInt
+  investment_account_id BigInt?
+  direction             String?              @db.VarChar(16)
+  users                 users                @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkqwv7rmvc8va8rep7piikrojds")
+  recurrences           recurrences?         @relation(fields: [recurrence_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fkscpo43kqw66yeof9mcljtscgl")
+  categories            categories?          @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fksqqi7sneo04kast0o138h19mv")
+  investment_accounts   investment_accounts? @relation(fields: [investment_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
+  @@unique([recurrence_id, recurrence_index])
   @@index([user_id, date])
   @@index([recurrence_id])
   @@index([category_id])
+  @@index([investment_account_id])
+}
+
+model investment_accounts {
+  id                   BigInt            @id @default(autoincrement())
+  user_id              BigInt
+  name                 String            @db.VarChar(120)
+  role                 String            @default("investment") @db.VarChar(32)
+  initial_balance      Decimal           @default(0) @db.Decimal(15, 2)
+  initial_balance_date DateTime          @db.Date
+  target_balance       Decimal?          @db.Decimal(15, 2)
+  legacy_category_id   BigInt?           @unique
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?         @updatedAt @db.Timestamptz(6)
+  users                users             @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transactions         transactions[]
+  balance_updates      balance_updates[]
+
+  @@index([user_id])
+}
+
+model balance_updates {
+  id                    BigInt              @id @default(autoincrement())
+  investment_account_id BigInt
+  date                  DateTime            @db.Date
+  balance               Decimal             @db.Decimal(15, 2)
+  created_at            DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?           @updatedAt @db.Timestamptz(6)
+  investment_accounts   investment_accounts @relation(fields: [investment_account_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([investment_account_id, date])
 }
 
 model users {
-  id                           BigInt         @id @default(autoincrement())
-  created_at                   DateTime       @default(now()) @db.Timestamptz(6)
+  id                           BigInt                @id @default(autoincrement())
+  created_at                   DateTime              @default(now()) @db.Timestamptz(6)
   default_recurrence_months    Int
-  email                        String         @unique(map: "uk6dotkott2kjsp8vw4d0m25fb7") @db.VarChar(255)
+  email                        String                @unique(map: "uk6dotkott2kjsp8vw4d0m25fb7") @db.VarChar(255)
   emergency_fund_target_months Int
-  name                         String?        @db.VarChar(255)
-  password                     String         @db.VarChar(255)
-  updated_at                   DateTime?      @updatedAt @db.Timestamptz(6)
+  name                         String?               @db.VarChar(255)
+  password                     String                @db.VarChar(255)
+  updated_at                   DateTime?             @updatedAt @db.Timestamptz(6)
   categories                   categories[]
   recurrences                  recurrences[]
   transactions                 transactions[]
+  investment_accounts          investment_accounts[]
 }
