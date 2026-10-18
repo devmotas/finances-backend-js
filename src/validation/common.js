@@ -11,6 +11,7 @@ const YEAR_MIN = 2000;
 const YEAR_MAX = 2100;
 const MONTHS_IN_YEAR = 12;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH_TEXT = /^\d{4}-(0[1-9]|1[0-2])$/;
 const BIGINT_ID = /^\d{1,18}$/;
 
 const idParamSchema = z.object({
@@ -41,4 +42,6 @@ module.exports = {
   PREFERENCE_MONTHS_MAX,
   SERIES_MONTHS_MAX,
   ISO_DATE,
+  MONTH_TEXT,
+  BIGINT_ID,
 };

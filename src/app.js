@@ -8,6 +8,7 @@ const categoryRoutes = require('./routes/categories');
 const transactionRoutes = require('./routes/transactions');
 const recurrenceRoutes = require('./routes/recurrences');
 const investmentRoutes = require('./routes/investments');
+const investmentAccountRoutes = require('./routes/investmentAccounts');
 const summaryRoutes = require('./routes/summary');
 const reportRoutes = require('./routes/reports');
 
@@ -41,6 +42,7 @@ app.use('/categories', categoryRoutes);
 app.use('/transactions', transactionRoutes);
 app.use('/recurrences', recurrenceRoutes);
 app.use('/investments', investmentRoutes);
+app.use('/investment-accounts', investmentAccountRoutes);
 app.use('/finance', summaryRoutes);
 app.use('/reports', reportRoutes);
 

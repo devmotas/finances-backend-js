@@ -14,7 +14,7 @@ const CONTENT_TYPE = Object.freeze({
 function findTransactions(userId, from, to) {
   return prisma.transactions.findMany({
     where: { user_id: BigInt(userId), date: { gte: from, lte: to } },
-    include: { categories: true },
+    include: { categories: true, investment_accounts: true },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   });
 }

@@ -1,188 +1,161 @@
 const prisma = require('../db/prisma');
+const { INTERACTIVE_TRANSACTION_OPTIONS } = require('../db/transactionOptions');
 const { NotFoundError, BadRequestError } = require('../errors/AppError');
 const { validateAmount } = require('../domain/amount');
-const { seriesDescription } = require('../domain/installment');
-const { SCHEDULE } = require('../domain/constants');
+const { SCHEDULE, FLOW, INVESTMENT_DIRECTION } = require('../domain/constants');
+const { monthOf, firstDay, lastDay, formatMonth, formatDate } = require('../domain/months');
+const seriesService = require('./seriesService');
 
-function firstDay(year, month) {
-  return new Date(Date.UTC(year, month - 1, 1));
-}
-
-function lastDay(year, month) {
-  return new Date(Date.UTC(year, month, 0));
-}
-
-function formatDate(d) {
-  return d.toISOString().split('T')[0];
-}
+const TX_INCLUDE = Object.freeze({ recurrences: true });
+const DATE_ORDER = Object.freeze([{ date: 'asc' }, { id: 'asc' }]);
 
 async function listByMonth(userId, year, month) {
+  await seriesService.topUpSeries(userId);
+  const selected = { year, month };
   const txs = await prisma.transactions.findMany({
-    where: {
-      user_id: BigInt(userId),
-      date: { gte: firstDay(year, month), lte: lastDay(year, month) },
-    },
-    include: { categories: true },
-    orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    where: { user_id: BigInt(userId), date: { gte: firstDay(selected), lte: lastDay(selected) } },
+    include: TX_INCLUDE,
+    orderBy: DATE_ORDER,
   });
   return txs.map(toDto);
 }
 
-async function create(userId, { categoryId, description, amount, date, schedule }) {
-  const user = await prisma.users.findUnique({ where: { id: BigInt(userId) } });
-  if (!user) throw new NotFoundError('Usuário não encontrado.');
+async function loadTargets(userId, items) {
+  const uid = BigInt(userId);
+  const idsOf = (key) => [...new Set(items.filter((i) => i[key] != null).map((i) => BigInt(i[key])))];
+  const categoryIds = idsOf('categoryId');
+  const accountIds = idsOf('investmentAccountId');
+  const [categories, accounts, legacyAccounts] = await Promise.all([
+    prisma.categories.findMany({ where: { user_id: uid, id: { in: categoryIds } } }),
+    prisma.investment_accounts.findMany({ where: { user_id: uid, id: { in: accountIds } } }),
+    prisma.investment_accounts.findMany({ where: { user_id: uid, legacy_category_id: { in: categoryIds } } }),
+  ]);
+  return {
+    categories: new Map(categories.map((c) => [String(c.id), c])),
+    accounts: new Map(accounts.map((a) => [String(a.id), a])),
+    accountsByLegacyCategory: new Map(legacyAccounts.map((a) => [String(a.legacy_category_id), a])),
+  };
+}
 
-  const category = await prisma.categories.findFirst({
-    where: { id: BigInt(categoryId), user_id: BigInt(userId) },
-  });
+function investmentData(account, direction, amount) {
+  if (!account) throw new NotFoundError('Conta de investimento não encontrada.');
+  if (direction == null) throw new BadRequestError('Informe se o lançamento é aporte ou resgate.');
+  if (!(amount > 0)) throw new BadRequestError('O valor do aporte ou resgate deve ser maior que zero.');
+  return {
+    category_id: account.legacy_category_id,
+    investment_account_id: account.id,
+    direction,
+    amount,
+    flow: FLOW.INVESTMENT,
+  };
+}
+
+function directionOfSigned(amount) {
+  return amount < 0 ? INVESTMENT_DIRECTION.WITHDRAWAL : INVESTMENT_DIRECTION.CONTRIBUTION;
+}
+
+function targetData(item, targets) {
+  if (item.investmentAccountId != null) {
+    return investmentData(targets.accounts.get(String(item.investmentAccountId)), item.direction, item.amount);
+  }
+  const category = targets.categories.get(String(item.categoryId));
   if (!category) throw new NotFoundError('Categoria não encontrada.');
+  if (category.flow === FLOW.INVESTMENT) {
+    validateAmount(item.amount, FLOW.INVESTMENT);
+    const account = targets.accountsByLegacyCategory.get(String(category.id));
+    return investmentData(account, item.direction ?? directionOfSigned(item.amount), Math.abs(item.amount));
+  }
+  validateAmount(item.amount, category.flow);
+  return { category_id: category.id, investment_account_id: null, direction: null, amount: item.amount, flow: category.flow };
+}
 
-  validateAmount(amount, category.flow);
-  if (schedule === SCHEDULE.FIXED) {
+async function resolveTarget(userId, item) {
+  return targetData(item, await loadTargets(userId, [item]));
+}
+
+async function create(userId, body) {
+  if (body.schedule === SCHEDULE.FIXED) {
     throw new BadRequestError('Lançamentos fixos são criados como série em /recurrences.');
   }
-
+  const target = await resolveTarget(userId, body);
   const tx = await prisma.transactions.create({
     data: {
       user_id: BigInt(userId),
-      category_id: BigInt(categoryId),
-      description: description?.trim() || null,
-      amount,
-      date: new Date(date),
-      schedule,
-      flow: category.flow,
+      description: body.description?.trim() || null,
+      date: new Date(body.date),
+      ...target,
     },
-    include: { categories: true },
+    include: TX_INCLUDE,
   });
   return toDto(tx);
 }
 
-async function update(userId, transactionId, { categoryId, description, amount, date }, applyToFutureSeries) {
+async function update(userId, transactionId, body, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
 
-  const category = await prisma.categories.findFirst({
-    where: { id: BigInt(categoryId), user_id: BigInt(userId) },
-  });
-  if (!category) throw new NotFoundError('Categoria não encontrada.');
-
-  validateAmount(amount, category.flow);
-  const schedule = scheduleOf(transaction);
-
   if (applyToFutureSeries && transaction.recurrence_id != null) {
-    const txDate = new Date(transaction.date);
-    const monthStart = new Date(Date.UTC(txDate.getUTCFullYear(), txDate.getUTCMonth(), 1));
-
-    const [recurrence, futureTxs] = await Promise.all([
-      prisma.recurrences.findUnique({ where: { id: transaction.recurrence_id } }),
-      prisma.transactions.findMany({
-        where: {
-          recurrence_id: transaction.recurrence_id,
-          user_id: BigInt(userId),
-          date: { gte: monthStart },
-        },
-      }),
-    ]);
-
-    await prisma.$transaction([
-      prisma.recurrences.update({
-        where: { id: recurrence.id },
-        data: {
-          category_id: BigInt(categoryId),
-          description: seriesDescription(description, null, null),
-          amount,
-        },
-      }),
-      ...futureTxs.map((t) =>
-        prisma.transactions.update({
-          where: { id: t.id },
-          data: {
-            category_id: BigInt(categoryId),
-            description: seriesDescription(description, t.recurrence_index, recurrence.installment_total),
-            amount,
-            schedule,
-            flow: category.flow,
-            ...(t.id === transaction.id ? { date: new Date(date) } : {}),
-          },
-        })
-      ),
-    ]);
-
-    const updated = await prisma.transactions.findUnique({
-      where: { id: BigInt(transactionId) },
-      include: { categories: true },
-    });
-    return toDto(updated);
+    return toDto(await seriesService.replaceFromTransaction(userId, transaction, body));
   }
 
+  const target = await resolveTarget(userId, body);
+  if (transaction.recurrence_id != null && target.flow === FLOW.INVESTMENT) {
+    throw new BadRequestError('Um lançamento de série não pode virar aporte ou resgate.');
+  }
   const updated = await prisma.transactions.update({
-    where: { id: BigInt(transactionId) },
+    where: { id: transaction.id },
     data: {
-      category_id: BigInt(categoryId),
-      description: description?.trim() || null,
-      amount,
-      date: new Date(date),
-      schedule,
-      flow: category.flow,
+      description: body.description?.trim() || null,
+      date: new Date(body.date),
+      ...target,
     },
-    include: { categories: true },
+    include: TX_INCLUDE,
   });
   return toDto(updated);
 }
 
 async function remove(userId, transactionId, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
-  const where = deletionScope(userId, transaction, applyToFutureSeries);
+  const closesSeries = applyToFutureSeries && transaction.recurrence_id != null;
+  const where = closesSeries
+    ? { recurrence_id: transaction.recurrence_id, date: { gte: firstDay(monthOf(transaction.date)) } }
+    : { id: transaction.id };
 
   return prisma.$transaction(async (db) => {
-    const deleted = await db.transactions.findMany({ where, orderBy: [{ date: 'asc' }, { id: 'asc' }] });
+    const deleted = await db.transactions.findMany({ where, include: TX_INCLUDE, orderBy: DATE_ORDER });
     await db.transactions.deleteMany({ where: { id: { in: deleted.map((t) => t.id) } } });
-    return deleted.map(toDto);
-  });
+    const closedSeries = closesSeries
+      ? [await seriesService.closeSeries(db, transaction.recurrences, transaction.date)]
+      : [];
+    return { deleted: deleted.map(toDto), closedSeries };
+  }, INTERACTIVE_TRANSACTION_OPTIONS);
 }
 
-function deletionScope(userId, transaction, applyToFutureSeries) {
-  if (!applyToFutureSeries || transaction.recurrence_id == null) {
-    return { id: transaction.id };
-  }
-  const txDate = new Date(transaction.date);
-  return {
-    recurrence_id: transaction.recurrence_id,
-    user_id: BigInt(userId),
-    date: { gte: firstDay(txDate.getUTCFullYear(), txDate.getUTCMonth() + 1) },
-  };
-}
-
-async function restore(userId, items) {
-  const categories = await ownedCategories(userId, items);
+async function restore(userId, items, reopenSeries = []) {
+  const targets = await loadTargets(userId, items);
   await assertOwnedRecurrences(userId, items);
 
   const data = items.map((item) => {
-    const category = categories.get(String(item.categoryId));
-    validateAmount(item.amount, category.flow);
+    const inSeries = item.recurrenceId != null;
     return {
       user_id: BigInt(userId),
-      category_id: category.id,
       description: item.description?.trim() || null,
-      amount: item.amount,
       date: new Date(item.date),
-      schedule: item.recurrenceId != null ? SCHEDULE.FIXED : SCHEDULE.VARIABLE,
-      flow: category.flow,
-      recurrence_id: item.recurrenceId != null ? BigInt(item.recurrenceId) : null,
-      recurrence_index: item.recurrenceId != null ? item.recurrenceIndex : null,
+      recurrence_id: inSeries ? BigInt(item.recurrenceId) : null,
+      recurrence_index: inSeries ? item.recurrenceIndex : null,
+      ...targetData(item, targets),
     };
   });
 
-  const restored = await prisma.transactions.createManyAndReturn({ data });
-  return restored.map(toDto);
-}
-
-async function ownedCategories(userId, items) {
-  const ids = [...new Set(items.map((i) => String(i.categoryId)))];
-  const found = await prisma.categories.findMany({
-    where: { user_id: BigInt(userId), id: { in: ids.map(BigInt) } },
-  });
-  if (found.length !== ids.length) throw new NotFoundError('Categoria não encontrada.');
-  return new Map(found.map((c) => [String(c.id), c]));
+  return prisma.$transaction(async (db) => {
+    const created = await db.transactions.createManyAndReturn({ data, select: { id: true } });
+    await seriesService.reopenSeries(db, userId, reopenSeries);
+    const restored = await db.transactions.findMany({
+      where: { id: { in: created.map((t) => t.id) } },
+      include: TX_INCLUDE,
+      orderBy: DATE_ORDER,
+    });
+    return restored.map(toDto);
+  }, INTERACTIVE_TRANSACTION_OPTIONS);
 }
 
 async function assertOwnedRecurrences(userId, items) {
@@ -197,26 +170,31 @@ async function assertOwnedRecurrences(userId, items) {
 async function findOrThrow(userId, transactionId) {
   const tx = await prisma.transactions.findFirst({
     where: { id: BigInt(transactionId), user_id: BigInt(userId) },
+    include: TX_INCLUDE,
   });
   if (!tx) throw new NotFoundError('Transação não encontrada.');
   return tx;
 }
 
-function scheduleOf(transaction) {
-  return transaction.recurrence_id != null ? SCHEDULE.FIXED : SCHEDULE.VARIABLE;
+function seriesEndsOn(recurrence) {
+  return recurrence?.end_month ? formatMonth(monthOf(recurrence.end_month)) : null;
 }
 
 function toDto(tx) {
   return {
     id: Number(tx.id),
-    categoryId: Number(tx.category_id),
+    categoryId: tx.category_id ? Number(tx.category_id) : null,
+    investmentAccountId: tx.investment_account_id ? Number(tx.investment_account_id) : null,
+    direction: tx.direction ?? null,
     description: tx.description ?? null,
     amount: parseFloat(Number(tx.amount).toFixed(2)),
     date: formatDate(tx.date),
-    schedule: tx.schedule,
+    schedule: tx.recurrence_id ? SCHEDULE.FIXED : SCHEDULE.VARIABLE,
     flow: tx.flow,
     recurrenceId: tx.recurrence_id ? Number(tx.recurrence_id) : null,
     recurrenceIndex: tx.recurrence_index ?? null,
+    seriesKind: tx.recurrences?.kind ?? null,
+    seriesEndsOn: seriesEndsOn(tx.recurrences),
   };
 }
 

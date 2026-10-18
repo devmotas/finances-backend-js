@@ -1,14 +1,14 @@
 const { hashPassword, passwordMatches, signUserToken } = require('../security/tokens');
 const { toUserDto } = require('./userService');
 const {
-  FLOW,
+  ACCOUNT_ROLE,
   DEFAULT_RECURRENCE_MONTHS,
   DEFAULT_EMERGENCY_FUND_TARGET_MONTHS,
 } = require('../domain/constants');
 const prisma = require('../db/prisma');
 const { ConflictError, UnauthorizedError } = require('../errors/AppError');
 
-const SEED_INVESTMENT_CATEGORIES = [
+const SEED_INVESTMENT_ACCOUNTS = [
   'Renda Fixa (Tesouro, CDB, LCI/LCA)',
   'Renda Variável (Ações, ETFs)',
   'Fundos Imobiliários (FIIs)',
@@ -30,13 +30,13 @@ async function register({ name, email, password }) {
     },
   });
 
-  await prisma.categories.createMany({
-    data: SEED_INVESTMENT_CATEGORIES.map((catName) => ({
+  await prisma.investment_accounts.createMany({
+    data: SEED_INVESTMENT_ACCOUNTS.map((accountName) => ({
       user_id: user.id,
-      name: catName,
-      flow: FLOW.INVESTMENT,
-      expense_group: null,
-      opening_balance_amount: 0,
+      name: accountName,
+      role: ACCOUNT_ROLE.INVESTMENT,
+      initial_balance: 0,
+      initial_balance_date: user.created_at,
     })),
   });
 

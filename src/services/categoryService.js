@@ -1,6 +1,7 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, ConflictError, UnprocessableError } = require('../errors/AppError');
 const { FLOW } = require('../domain/constants');
+const { syncLegacyCategory, removeLegacyAccount } = require('./investmentAccountService');
 
 async function listAll(userId) {
   const cats = await prisma.categories.findMany({ where: { user_id: BigInt(userId) } });
@@ -28,6 +29,7 @@ async function create(userId, { name, flow, expenseGroup, openingBalanceAmount }
       opening_balance_amount: normalizedOpeningBalance(flow, openingBalanceAmount),
     },
   });
+  if (flow === FLOW.INVESTMENT) await syncLegacyCategory(category);
   return toDto(category);
 }
 
@@ -56,6 +58,7 @@ async function update(userId, categoryId, { name, flow, expenseGroup, openingBal
       opening_balance_amount: normalizedOpeningBalance(flow, openingBalanceAmount),
     },
   });
+  if (flow === FLOW.INVESTMENT) await syncLegacyCategory(updated);
   return toDto(updated);
 }
 
@@ -71,6 +74,7 @@ async function remove(userId, categoryId) {
       `A categoria '${cat.name}' possui lançamentos ou séries vinculadas e não pode ser excluída.`
     );
   }
+  if (cat.flow === FLOW.INVESTMENT) await removeLegacyAccount(categoryId);
   await prisma.categories.delete({ where: { id: BigInt(categoryId) } });
 }
 

@@ -1,11 +1,5 @@
-function computeBalances({ opening, income, expense, investment }) {
-  const cashBalance = income.minus(expense).minus(investment);
-  const investedPosition = opening.plus(investment);
-  return {
-    cashBalance,
-    investedPosition,
-    totalReserve: cashBalance.plus(investedPosition),
-  };
+function netCash({ income, expenses, contributions, withdrawals }) {
+  return income.minus(expenses).minus(contributions).plus(withdrawals);
 }
 
-module.exports = { computeBalances };
+module.exports = { netCash };

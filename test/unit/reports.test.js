@@ -7,8 +7,9 @@ const { buildPdf } = require('../../src/reports/pdf');
 const iso = (d) => d.toISOString().slice(0, 10);
 
 const transactions = [
-  { date: new Date('2026-10-05'), flow: 'income', schedule: 'fixed', amount: '5000.5', description: 'Salário', categories: { name: 'Trabalho' } },
-  { date: new Date('2026-10-10'), flow: 'expense', schedule: 'variable', amount: '120', description: 'Mercado; semana', categories: { name: 'Casa' } },
+  { date: new Date('2026-10-05'), flow: 'income', recurrence_id: 1n, amount: '5000.5', description: 'Salário', categories: { name: 'Trabalho' } },
+  { date: new Date('2026-10-10'), flow: 'expense', recurrence_id: null, amount: '120', description: 'Mercado; semana', categories: { name: 'Casa' } },
+  { date: new Date('2026-10-12'), flow: 'investment', recurrence_id: null, direction: 'withdrawal', amount: '300', description: null, categories: null, investment_accounts: { name: 'Dólar' } },
 ];
 
 test('trimestre e ano cobrem o intervalo certo', () => {
@@ -30,6 +31,8 @@ test('CSV em pt-BR com vírgula decimal, aspas quando preciso e totais', () => {
   assert.match(csv, /10\/10\/2026;Saída;Casa;120,00;"Mercado; semana";Do mês/);
   assert.match(csv, /Total entrada;5000,50/);
   assert.match(csv, /Total saída;120,00/);
+  assert.match(csv, /12\/10\/2026;Investimento;Dólar;-300,00/);
+  assert.match(csv, /Total investimento;-300,00/);
 });
 
 test('PDF é gerado', async () => {
