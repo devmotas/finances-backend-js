@@ -342,3 +342,93 @@ test('compatibilidade: aporte negativo pela categoria de investimento vira resga
   assert.equal(restored.body.restored[0].direction, 'withdrawal');
   await call('DELETE', `/transactions/${restored.body.restored[0].id}`);
 });
+
+function seriesRows(recurrenceId) {
+  return prisma.transactions.findMany({
+    where: { recurrence_id: BigInt(recurrenceId) },
+    orderBy: [{ date: 'asc' }, { flow: 'asc' }],
+  });
+}
+
+const pairOf = (rows, date) => rows.filter((t) => isoDate(t.date) === date);
+
+test('entrada fixa com destino: cada mês gera a entrada e o aporte na conta, sem mexer no caixa', async () => {
+  const account = await call('POST', '/investment-accounts', { name: `${TEMP_PREFIX} destino`, initialBalanceDate: '2026-01-01' });
+  const accountId = account.body.id;
+  const incomeCategoryId = await createCategory('PTR', 'income');
+  const before = (await call('GET', '/finance/summary?year=2026&month=11')).body;
+
+  const series = { categoryId: incomeCategoryId, description: 'PTR da Vale', amount: 810.5, startDate: '2026-11-07', kind: 'fixed' };
+  assert.equal((await call('POST', '/recurrences', { ...series, categoryId: fixedCategoryId, destinationAccountId: accountId })).status, 400);
+  assert.equal((await call('POST', '/recurrences', { ...series, kind: 'installment', installments: 2, destinationAccountId: accountId })).status, 400);
+  assert.equal((await call('POST', '/recurrences', { ...series, destinationAccountId: 999999999 })).status, 404);
+
+  const created = await call('POST', '/recurrences', { ...series, destinationAccountId: accountId });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.series.destinationAccountId, accountId);
+  const { recurrenceId } = created.body;
+  const rows = await seriesRows(recurrenceId);
+  assert.equal(rows.length, created.body.createdCount * 2);
+  const [november, novemberContribution] = pairOf(rows, '2026-11-07');
+  assert.equal(november.flow, 'income');
+  assert.equal(Number(novemberContribution.investment_account_id), accountId);
+  assert.equal(novemberContribution.direction, 'contribution');
+  assert.equal(Number(novemberContribution.amount), 810.5);
+  assert.equal(novemberContribution.recurrence_index, november.recurrence_index);
+
+  const listed = (await call('GET', '/transactions?year=2026&month=11')).body.filter((t) => t.recurrenceId === recurrenceId);
+  assert.deepEqual(listed.map((t) => [t.flow, t.destinationAccountId]), [['income', accountId], ['investment', null]]);
+
+  const after = (await call('GET', '/finance/summary?year=2026&month=11')).body;
+  assert.ok(close(after.totalIncome - before.totalIncome, 810.5));
+  assert.ok(close(after.totalContributions - before.totalContributions, 810.5));
+  assert.ok(close(after.monthBalance, before.monthBalance));
+  assert.ok(close(after.cashBalance, before.cashBalance));
+  const investedAccount = (await call('GET', '/investments?year=2026&month=11')).body.accounts.find((a) => a.id === accountId);
+  assert.equal(investedAccount.monthContributions, 810.5);
+
+  const lastPair = rows.slice(-2);
+  await prisma.transactions.deleteMany({ where: { id: { in: lastPair.map((t) => t.id) } } });
+  const lastDate = lastPair[0].date;
+  await prisma.recurrences.update({
+    where: { id: BigInt(recurrenceId) },
+    data: { materialized_until: new Date(Date.UTC(lastDate.getUTCFullYear(), lastDate.getUTCMonth() - 1, 1)) },
+  });
+  await call('GET', '/transactions?year=2026&month=11');
+  await call('GET', '/transactions?year=2026&month=11');
+  assert.equal((await seriesRows(recurrenceId)).length, rows.length);
+
+  const removed = await call('DELETE', `/transactions/${novemberContribution.id}`);
+  assert.deepEqual(removed.body.deleted.map((t) => t.flow).sort(), ['income', 'investment']);
+  assert.equal(pairOf(await seriesRows(recurrenceId), '2026-11-07').length, 0);
+  assert.equal((await call('POST', '/transactions/restore', { transactions: removed.body.deleted })).status, 201);
+  const [restoredIncome, restoredContribution] = pairOf(await seriesRows(recurrenceId), '2026-11-07');
+  assert.equal(restoredContribution.direction, 'contribution');
+
+  const edited = await call('PUT', `/transactions/${restoredIncome.id}`, { categoryId: incomeCategoryId, amount: 900, date: '2026-11-07', description: 'PTR da Vale' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.destinationAccountId, accountId);
+  assert.deepEqual(pairOf(await seriesRows(recurrenceId), '2026-11-07').map((t) => Number(t.amount)), [900, 900]);
+  assert.equal((await call('PUT', `/transactions/${restoredIncome.id}`, { investmentAccountId: accountId, direction: 'contribution', amount: 10, date: '2026-11-07' })).status, 400);
+  assert.equal((await call('PUT', `/transactions/${restoredContribution.id}`, { investmentAccountId: accountId, direction: 'withdrawal', amount: 10, date: '2026-11-07' })).status, 400);
+
+  const january = pairOf(await seriesRows(recurrenceId), '2027-01-07').find((t) => t.flow === 'investment');
+  const replaced = await call('PUT', `/transactions/${january.id}?applyToFutureSeries=true`, {
+    investmentAccountId: accountId, direction: 'contribution', amount: 1000, date: '2027-01-07', description: 'PTR da Vale',
+  });
+  assert.equal(replaced.status, 200);
+  assert.equal(replaced.body.flow, 'investment');
+  const newSeries = await prisma.recurrences.findUnique({ where: { id: BigInt(replaced.body.recurrenceId) } });
+  assert.equal(Number(newSeries.destination_account_id), accountId);
+  const newRows = await seriesRows(replaced.body.recurrenceId);
+  assert.ok(newRows.every((t) => Number(t.amount) === 1000));
+  assert.deepEqual(pairOf(newRows, '2027-01-07').map((t) => t.flow), ['income', 'investment']);
+  assert.equal(pairOf(await seriesRows(recurrenceId), '2026-12-07').length, 2);
+  assert.equal(pairOf(await seriesRows(recurrenceId), '2027-01-07').length, 0);
+
+  assert.equal((await call('DELETE', `/investment-accounts/${accountId}`)).status, 422);
+
+  const firstOfNewSeries = newRows.find((t) => t.flow === 'income');
+  const closed = await call('DELETE', `/transactions/${firstOfNewSeries.id}?applyToFutureSeries=true`);
+  assert.equal(closed.body.deleted.length, newRows.length);
+});

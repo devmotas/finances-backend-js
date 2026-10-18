@@ -58,6 +58,10 @@ _Avoid_: prestação
 Definir o último mês de uma série fixa; os meses seguintes deixam de ter lançamentos dela.
 _Avoid_: cancelar série, apagar série
 
+**Entrada com destino**:
+Entrada fixa que, todo mês, já vira aporte numa conta de investimento; o dinheiro não passa pelo caixa.
+_Avoid_: transferência automática
+
 **Série acabando**:
 Série cujo último lançamento está a até dois meses do mês selecionado; recebe aviso.
 _Avoid_: série vencendo

@@ -18,6 +18,7 @@ const createSchema = z.object({
   installments: z.number().int().min(1).max(SERIES_MONTHS_MAX).optional(),
   months: z.number().int().min(1).max(SERIES_MONTHS_MAX).optional(),
   installmentTotal: z.number().int().min(1).max(SERIES_MONTHS_MAX).nullable().optional(),
+  destinationAccountId: z.number().int().positive().nullable().optional(),
 });
 
 router.post('/', async (req, res, next) => {

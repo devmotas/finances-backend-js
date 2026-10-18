@@ -7,6 +7,8 @@ const { monthOf, firstDay, lastDay, formatMonth, formatDate } = require('../doma
 const seriesService = require('./seriesService');
 
 const TX_INCLUDE = Object.freeze({ recurrences: true });
+const SERIES_TO_INVESTMENT_MESSAGE = 'Um lançamento de série não pode virar aporte ou resgate.';
+const PAIRED_CONTRIBUTION_MESSAGE = 'O aporte de uma entrada com destino continua sendo aporte; mude só valor, data, descrição ou conta.';
 const DATE_ORDER = Object.freeze([{ date: 'asc' }, { id: 'asc' }]);
 
 async function listByMonth(userId, year, month) {
@@ -90,35 +92,70 @@ async function create(userId, body) {
   return toDto(tx);
 }
 
+function isPairedContribution(transaction) {
+  return transaction.recurrence_id != null && transaction.flow === FLOW.INVESTMENT;
+}
+
+function assertKeepsSeriesShape(transaction, target) {
+  if (transaction.recurrence_id == null) return;
+  if (!isPairedContribution(transaction)) {
+    if (target.flow === FLOW.INVESTMENT) throw new BadRequestError(SERIES_TO_INVESTMENT_MESSAGE);
+    return;
+  }
+  if (target.flow !== FLOW.INVESTMENT || target.direction !== INVESTMENT_DIRECTION.CONTRIBUTION) {
+    throw new BadRequestError(PAIRED_CONTRIBUTION_MESSAGE);
+  }
+}
+
+function sameOccurrence(transaction) {
+  return { recurrence_id: transaction.recurrence_id, recurrence_index: transaction.recurrence_index };
+}
+
+async function mirrorPairedContribution(db, income) {
+  if (income.recurrence_id == null || isPairedContribution(income)) return;
+  await db.transactions.updateMany({
+    where: { ...sameOccurrence(income), flow: FLOW.INVESTMENT },
+    data: { amount: income.amount, date: income.date, description: income.description },
+  });
+}
+
 async function update(userId, transactionId, body, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
+  const target = await resolveTarget(userId, body);
+  assertKeepsSeriesShape(transaction, target);
 
   if (applyToFutureSeries && transaction.recurrence_id != null) {
     return toDto(await seriesService.replaceFromTransaction(userId, transaction, body));
   }
 
-  const target = await resolveTarget(userId, body);
-  if (transaction.recurrence_id != null && target.flow === FLOW.INVESTMENT) {
-    throw new BadRequestError('Um lançamento de série não pode virar aporte ou resgate.');
-  }
-  const updated = await prisma.transactions.update({
-    where: { id: transaction.id },
-    data: {
-      description: body.description?.trim() || null,
-      date: new Date(body.date),
-      ...target,
-    },
-    include: TX_INCLUDE,
-  });
+  const updated = await prisma.$transaction(async (db) => {
+    const saved = await db.transactions.update({
+      where: { id: transaction.id },
+      data: {
+        description: body.description?.trim() || null,
+        date: new Date(body.date),
+        ...target,
+      },
+      include: TX_INCLUDE,
+    });
+    await mirrorPairedContribution(db, saved);
+    return saved;
+  }, INTERACTIVE_TRANSACTION_OPTIONS);
   return toDto(updated);
+}
+
+function deletionWhere(transaction, applyToFutureSeries) {
+  if (transaction.recurrence_id == null) return { id: transaction.id };
+  if (applyToFutureSeries) {
+    return { recurrence_id: transaction.recurrence_id, date: { gte: firstDay(monthOf(transaction.date)) } };
+  }
+  return transaction.recurrence_index == null ? { id: transaction.id } : sameOccurrence(transaction);
 }
 
 async function remove(userId, transactionId, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
   const closesSeries = applyToFutureSeries && transaction.recurrence_id != null;
-  const where = closesSeries
-    ? { recurrence_id: transaction.recurrence_id, date: { gte: firstDay(monthOf(transaction.date)) } }
-    : { id: transaction.id };
+  const where = deletionWhere(transaction, applyToFutureSeries);
 
   return prisma.$transaction(async (db) => {
     const deleted = await db.transactions.findMany({ where, include: TX_INCLUDE, orderBy: DATE_ORDER });
@@ -180,6 +217,11 @@ function seriesEndsOn(recurrence) {
   return recurrence?.end_month ? formatMonth(monthOf(recurrence.end_month)) : null;
 }
 
+function destinationOf(tx) {
+  const accountId = tx.flow === FLOW.INCOME ? tx.recurrences?.destination_account_id : null;
+  return accountId ? Number(accountId) : null;
+}
+
 function toDto(tx) {
   return {
     id: Number(tx.id),
@@ -196,6 +238,7 @@ function toDto(tx) {
     seriesKind: tx.recurrences?.kind ?? null,
     seriesEndsOn: seriesEndsOn(tx.recurrences),
     installmentTotal: tx.recurrences?.installment_total ?? null,
+    destinationAccountId: destinationOf(tx),
   };
 }
 

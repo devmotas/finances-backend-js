@@ -8,6 +8,8 @@ const {
   closingMonthBefore,
   endMonthAfterClosing,
   installmentEndMonth,
+  assertDestinationAllowed,
+  withPairedContributions,
 } = require('../../src/domain/series');
 
 const TODAY = new Date('2026-10-18T12:00:00Z');
@@ -91,4 +93,29 @@ test('encerrar a partir de um mês fecha no mês anterior sem adiar um fim que j
   assert.deepEqual(endMonthAfterClosing(null, closing), closing);
   assert.deepEqual(endMonthAfterClosing({ year: 2026, month: 8 }, closing), { year: 2026, month: 8 });
   assert.deepEqual(endMonthAfterClosing({ year: 2027, month: 3 }, closing), closing);
+});
+
+test('só entrada fixa pode ter conta de destino', () => {
+  assert.doesNotThrow(() => assertDestinationAllowed({ kind: 'fixed', flow: 'income' }));
+  assert.throws(() => assertDestinationAllowed({ kind: 'fixed', flow: 'expense' }), /entrada fixa/);
+  assert.throws(() => assertDestinationAllowed({ kind: 'installment', flow: 'income' }), /entrada fixa/);
+});
+
+test('entrada com destino gera um aporte do mesmo valor, data e índice na conta', () => {
+  const income = { user_id: 1n, category_id: 7n, description: 'PTR', amount: 810.5, date: new Date('2026-11-07'), flow: 'income', recurrence_id: 3n, recurrence_index: 1 };
+  const account = { id: 20n, legacy_category_id: null };
+  const [kept, contribution] = withPairedContributions([income], account);
+  assert.deepEqual(kept, income);
+  assert.deepEqual(contribution, {
+    ...income,
+    category_id: null,
+    investment_account_id: 20n,
+    direction: 'contribution',
+    flow: 'investment',
+  });
+});
+
+test('sem conta de destino a série gera só as entradas', () => {
+  const rows = [{ flow: 'income' }];
+  assert.equal(withPairedContributions(rows, null), rows);
 });

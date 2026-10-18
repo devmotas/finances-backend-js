@@ -156,6 +156,12 @@ async function remove(userId, accountId) {
       `A conta '${account.name}' possui lançamentos e não pode ser excluída.`
     );
   }
+  const isSeriesDestination = await prisma.recurrences.findFirst({ where: { destination_account_id: account.id } });
+  if (isSeriesDestination) {
+    throw new UnprocessableError(
+      `A conta '${account.name}' recebe uma entrada fixa e não pode ser excluída.`
+    );
+  }
   await prisma.investment_accounts.delete({ where: { id: account.id } });
 }
 

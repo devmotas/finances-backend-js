@@ -13,7 +13,11 @@ const {
   normalizeSeriesRequest,
   closingMonthBefore,
   endMonthAfterClosing,
+  assertDestinationAllowed,
+  withPairedContributions,
 } = require('../domain/series');
+
+const SERIES_INCLUDE = Object.freeze({ categories: true, destination_account: true });
 
 function toSeries(recurrence) {
   return {
@@ -36,6 +40,7 @@ function toSeriesDto(recurrence) {
     startDate: formatDate(recurrence.start_date),
     endMonth: recurrence.end_month ? formatMonth(monthOf(recurrence.end_month)) : null,
     installmentTotal: recurrence.installment_total ?? null,
+    destinationAccountId: recurrence.destination_account_id ? Number(recurrence.destination_account_id) : null,
   };
 }
 
@@ -52,11 +57,11 @@ function occurrenceRows(recurrence, flow, occurrences, installmentAmounts) {
   }));
 }
 
-async function materialize(db, recurrence, flow, today, installmentAmounts) {
+async function materialize(db, recurrence, flow, today, { installmentAmounts = null, destination = null } = {}) {
   const occurrences = pendingOccurrences(toSeries(recurrence), today);
   if (occurrences.length === 0) return 0;
   await db.transactions.createMany({
-    data: occurrenceRows(recurrence, flow, occurrences, installmentAmounts),
+    data: withPairedContributions(occurrenceRows(recurrence, flow, occurrences, installmentAmounts), destination),
     skipDuplicates: true,
   });
   const last = occurrences[occurrences.length - 1];
@@ -76,10 +81,11 @@ async function topUpSeries(userId, today = new Date()) {
       materialized_until: { lt: horizonStart },
       OR: [{ end_month: null }, { end_month: { gt: prisma.recurrences.fields.materialized_until } }],
     },
-    include: { categories: true },
+    include: SERIES_INCLUDE,
   });
   for (const recurrence of candidates) {
-    await prisma.$transaction((db) => materialize(db, recurrence, recurrence.categories.flow, today), INTERACTIVE_TRANSACTION_OPTIONS);
+    const options = { destination: recurrence.destination_account };
+    await prisma.$transaction((db) => materialize(db, recurrence, recurrence.categories.flow, today, options), INTERACTIVE_TRANSACTION_OPTIONS);
   }
 }
 
@@ -96,7 +102,17 @@ async function seriesCategory(userId, categoryId) {
   return category;
 }
 
-async function openSeries(db, { userId, category, description, amount, startDate, kind, firstIndex, installmentTotal, endMonth, installmentAmounts }, today) {
+async function destinationAccount(userId, destinationAccountId, series) {
+  if (destinationAccountId == null) return null;
+  assertDestinationAllowed(series);
+  const account = await prisma.investment_accounts.findFirst({
+    where: { id: BigInt(destinationAccountId), user_id: BigInt(userId) },
+  });
+  if (!account) throw new NotFoundError('Conta de investimento não encontrada.');
+  return account;
+}
+
+async function openSeries(db, { userId, category, description, amount, startDate, kind, firstIndex, installmentTotal, endMonth, installmentAmounts, destination }, today) {
   const resolvedEnd =
     kind === SERIES_KIND.INSTALLMENT ? installmentEndMonth(startDate, firstIndex, installmentTotal) : endMonth;
   const recurrence = await db.recurrences.create({
@@ -111,9 +127,10 @@ async function openSeries(db, { userId, category, description, amount, startDate
       installment_total: installmentTotal,
       end_month: resolvedEnd ? firstDay(resolvedEnd) : null,
       materialized_until: firstDay(closingMonthBefore(new Date(startDate))),
+      destination_account_id: destination?.id ?? null,
     },
   });
-  const createdCount = await materialize(db, recurrence, category.flow, today, installmentAmounts);
+  const createdCount = await materialize(db, recurrence, category.flow, today, { installmentAmounts, destination });
   return { recurrence, createdCount };
 }
 
@@ -122,6 +139,7 @@ async function create(userId, body, today = new Date()) {
   const request = normalizeSeriesRequest(body);
   validateAmount(request.amount, category.flow);
   (request.installmentAmounts ?? []).forEach((value) => validateAmount(value, category.flow));
+  const destination = await destinationAccount(userId, body.destinationAccountId, { kind: request.kind, flow: category.flow });
 
   const { recurrence, createdCount } = await prisma.$transaction((db) =>
     openSeries(
@@ -137,6 +155,7 @@ async function create(userId, body, today = new Date()) {
         installmentTotal: request.installmentTotal,
         endMonth: null,
         installmentAmounts: request.installmentAmounts,
+        destination,
       },
       today
     ),
@@ -158,10 +177,29 @@ async function closeOrDropOldSeries(db, recurrence, closingMonth) {
   });
 }
 
-async function replaceFromTransaction(userId, transaction, { categoryId, description, amount, date }, today = new Date()) {
+function seriesChanges(transaction, recurrence, body) {
+  if (transaction.flow !== FLOW.INVESTMENT) {
+    return { ...body, destinationAccountId: recurrence.destination_account_id };
+  }
+  return {
+    categoryId: recurrence.category_id,
+    description: body.description,
+    amount: body.amount,
+    date: body.date,
+    destinationAccountId: body.investmentAccountId ?? recurrence.destination_account_id,
+  };
+}
+
+function sameSideAs(transaction) {
+  return transaction.flow === FLOW.INVESTMENT ? FLOW.INVESTMENT : { not: FLOW.INVESTMENT };
+}
+
+async function replaceFromTransaction(userId, transaction, body, today = new Date()) {
+  const recurrence = await prisma.recurrences.findUnique({ where: { id: transaction.recurrence_id } });
+  const { categoryId, description, amount, date, destinationAccountId } = seriesChanges(transaction, recurrence, body);
   const category = await seriesCategory(userId, categoryId);
   validateAmount(amount, category.flow);
-  const recurrence = await prisma.recurrences.findUnique({ where: { id: transaction.recurrence_id } });
+  const destination = await destinationAccount(userId, destinationAccountId, { kind: recurrence.kind, flow: category.flow });
   const editedMonth = monthOf(transaction.date);
   const isInstallment = recurrence.kind === SERIES_KIND.INSTALLMENT;
 
@@ -183,11 +221,12 @@ async function replaceFromTransaction(userId, transaction, { categoryId, descrip
         installmentTotal: recurrence.installment_total,
         endMonth: endStillAhead(recurrence, editedMonth),
         installmentAmounts: null,
+        destination,
       },
       today
     );
     return db.transactions.findFirst({
-      where: { recurrence_id: opened.id },
+      where: { recurrence_id: opened.id, flow: sameSideAs(transaction) },
       orderBy: { date: 'asc' },
       include: { recurrences: true },
     });

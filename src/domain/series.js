@@ -1,5 +1,5 @@
 const { BadRequestError } = require('../errors/AppError');
-const { SERIES_KIND, SERIES_HORIZON_MONTHS } = require('./constants');
+const { FLOW, SERIES_KIND, SERIES_HORIZON_MONTHS, INVESTMENT_DIRECTION } = require('./constants');
 const { addMonthsToDate } = require('../utils/dates');
 const { monthOf, addMonths, monthsDiff, minMonth, maxMonth } = require('./months');
 
@@ -74,6 +74,27 @@ function endMonthAfterClosing(currentEndMonth, closingMonth) {
   return closingMonth;
 }
 
+function assertDestinationAllowed({ kind, flow }) {
+  if (kind !== SERIES_KIND.FIXED || flow !== FLOW.INCOME) {
+    throw new BadRequestError('Só uma entrada fixa pode ir direto para uma conta de investimento.');
+  }
+}
+
+function pairedContribution(incomeRow, account) {
+  return {
+    ...incomeRow,
+    category_id: account.legacy_category_id,
+    investment_account_id: account.id,
+    direction: INVESTMENT_DIRECTION.CONTRIBUTION,
+    flow: FLOW.INVESTMENT,
+  };
+}
+
+function withPairedContributions(incomeRows, account) {
+  if (!account) return incomeRows;
+  return incomeRows.flatMap((row) => [row, pairedContribution(row, account)]);
+}
+
 module.exports = {
   FIRST_INDEX,
   horizonMonth,
@@ -85,4 +106,6 @@ module.exports = {
   normalizeSeriesRequest,
   closingMonthBefore,
   endMonthAfterClosing,
+  assertDestinationAllowed,
+  withPairedContributions,
 };
