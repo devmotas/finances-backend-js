@@ -195,6 +195,7 @@ function toDto(tx) {
     recurrenceIndex: tx.recurrence_index ?? null,
     seriesKind: tx.recurrences?.kind ?? null,
     seriesEndsOn: seriesEndsOn(tx.recurrences),
+    installmentTotal: tx.recurrences?.installment_total ?? null,
   };
 }
 
