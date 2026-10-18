@@ -10,6 +10,8 @@ const {
   installmentEndMonth,
   assertDestinationAllowed,
   withPairedContributions,
+  seriesFlow,
+  seriesRows,
 } = require('../../src/domain/series');
 
 const TODAY = new Date('2026-10-18T12:00:00Z');
@@ -118,4 +120,24 @@ test('entrada com destino gera um aporte do mesmo valor, data e índice na conta
 test('sem conta de destino a série gera só as entradas', () => {
   const rows = [{ flow: 'income' }];
   assert.equal(withPairedContributions(rows, null), rows);
+});
+
+test('série sem categoria é transferência fixa e só pode ir para a carteira', () => {
+  const wallet = { id: 30n, role: 'wallet', legacy_category_id: null };
+  const investment = { id: 20n, role: 'investment', legacy_category_id: null };
+  const flow = seriesFlow(null);
+  assert.doesNotThrow(() => assertDestinationAllowed({ kind: 'fixed', flow, amount: 750 }, wallet));
+  assert.throws(() => assertDestinationAllowed({ kind: 'fixed', flow, amount: 750 }, investment), /Carteira/);
+  assert.throws(() => assertDestinationAllowed({ kind: 'installment', flow, amount: 750 }, wallet), /Carteira/);
+  assert.throws(() => assertDestinationAllowed({ kind: 'fixed', flow, amount: -750 }, wallet), /maior que zero/);
+});
+
+test('série de transferência gera só a transferência de cada mês, sem entrada', () => {
+  const row = { user_id: 1n, category_id: null, description: 'Meu pagamento', amount: 750, date: new Date('2026-11-02'), flow: 'investment', recurrence_id: 11n, recurrence_index: 1 };
+  const wallet = { id: 30n, legacy_category_id: null };
+  assert.deepEqual(seriesRows([row], seriesFlow(null), wallet), [
+    { ...row, investment_account_id: 30n, direction: 'contribution', flow: 'investment' },
+  ]);
+  const income = { ...row, category_id: 7n, flow: 'income' };
+  assert.equal(seriesRows([income], 'income', wallet).length, 2);
 });

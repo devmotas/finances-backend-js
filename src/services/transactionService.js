@@ -1,14 +1,15 @@
 const prisma = require('../db/prisma');
 const { INTERACTIVE_TRANSACTION_OPTIONS } = require('../db/transactionOptions');
-const { NotFoundError, BadRequestError } = require('../errors/AppError');
+const { NotFoundError, BadRequestError, UnprocessableError } = require('../errors/AppError');
 const { validateAmount } = require('../domain/amount');
 const { SCHEDULE, FLOW, INVESTMENT_DIRECTION } = require('../domain/constants');
 const { monthOf, firstDay, lastDay, formatMonth, formatDate } = require('../domain/months');
 const seriesService = require('./seriesService');
 
-const TX_INCLUDE = Object.freeze({ recurrences: true });
+const TX_INCLUDE = Object.freeze({ recurrences: true, balance_update: true });
 const SERIES_TO_INVESTMENT_MESSAGE = 'Um lançamento de série não pode virar aporte ou resgate.';
 const PAIRED_CONTRIBUTION_MESSAGE = 'O aporte de uma entrada com destino continua sendo aporte; mude só valor, data, descrição ou conta.';
+const WALLET_ENTRY_MESSAGE = 'Este lançamento vem da atualização de saldo da Carteira. Corrija ou exclua a atualização de saldo.';
 const DATE_ORDER = Object.freeze([{ date: 'asc' }, { id: 'asc' }]);
 
 async function listByMonth(userId, year, month) {
@@ -119,8 +120,13 @@ async function mirrorPairedContribution(db, income) {
   });
 }
 
+function assertNotWalletEntry(transaction) {
+  if (transaction.balance_update_id != null) throw new UnprocessableError(WALLET_ENTRY_MESSAGE);
+}
+
 async function update(userId, transactionId, body, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
+  assertNotWalletEntry(transaction);
   const target = await resolveTarget(userId, body);
   assertKeepsSeriesShape(transaction, target);
 
@@ -154,6 +160,7 @@ function deletionWhere(transaction, applyToFutureSeries) {
 
 async function remove(userId, transactionId, applyToFutureSeries) {
   const transaction = await findOrThrow(userId, transactionId);
+  assertNotWalletEntry(transaction);
   const closesSeries = applyToFutureSeries && transaction.recurrence_id != null;
   const where = deletionWhere(transaction, applyToFutureSeries);
 
@@ -239,6 +246,7 @@ function toDto(tx) {
     seriesEndsOn: seriesEndsOn(tx.recurrences),
     installmentTotal: tx.recurrences?.installment_total ?? null,
     destinationAccountId: destinationOf(tx),
+    walletAccountId: tx.balance_update ? Number(tx.balance_update.investment_account_id) : null,
   };
 }
 

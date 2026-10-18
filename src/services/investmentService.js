@@ -3,6 +3,7 @@ const { listByMonth } = require('./transactionService');
 const { loadPortfolio, positionOf, toAccountWithPositionDto, money } = require('./investmentAccountService');
 const { FLOW, INVESTMENT_CHART_WINDOW_MONTHS } = require('../domain/constants');
 const { addMonths, lastDay, monthsBetween } = require('../domain/months');
+const { isWallet } = require('../domain/wallet');
 
 const OPENING_BALANCE_LABEL = 'Saldo inicial';
 const OPENING_POINT_PERIOD = 0;
@@ -70,6 +71,17 @@ function accountView(entry, end, previousEnd) {
   };
 }
 
+function walletView(entry, end, previousEnd) {
+  const atEnd = positionOf(entry, end);
+  const atPreviousEnd = positionOf(entry, previousEnd);
+  return { ...accountView(entry, end, previousEnd), monthSpending: money(atEnd.spending.minus(atPreviousEnd.spending)) };
+}
+
+function isMovementOf(accounts) {
+  const ids = new Set(accounts.map((entry) => Number(entry.account.id)));
+  return (transaction) => transaction.flow === FLOW.INVESTMENT && ids.has(transaction.investmentAccountId);
+}
+
 function legacyIdOf(account) {
   return Number(account.legacy_category_id ?? account.id);
 }
@@ -81,7 +93,9 @@ async function monthView(userId, year, month) {
   const windowStart = addMonths(selected, 1 - INVESTMENT_CHART_WINDOW_MONTHS);
 
   const allMonthTxs = await listByMonth(userId, year, month);
-  const portfolio = await loadPortfolio(userId, end);
+  const fullPortfolio = await loadPortfolio(userId, end);
+  const portfolio = fullPortfolio.filter((entry) => !isWallet(entry.account));
+  const wallets = fullPortfolio.filter((entry) => isWallet(entry.account));
   const atEnd = portfolioAt(portfolio, end);
   const atPreviousEnd = portfolioAt(portfolio, previousEnd);
   const accounts = portfolio.map((entry) => accountView(entry, end, previousEnd));
@@ -100,7 +114,9 @@ async function monthView(userId, year, month) {
       monthYield: money(atEnd.yield.minus(atPreviousEnd.yield)),
     },
     accounts,
-    transactions: allMonthTxs.filter((t) => t.flow === FLOW.INVESTMENT),
+    wallets: wallets.map((entry) => walletView(entry, end, previousEnd)),
+    transactions: allMonthTxs.filter(isMovementOf(portfolio)),
+    walletTransactions: allMonthTxs.filter(isMovementOf(wallets)),
     monthlySeries: [
       openingPoint(portfolio),
       ...monthsBetween(windowStart, selected).map((period) => monthPoint(portfolio, period)),

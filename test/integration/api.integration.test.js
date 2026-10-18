@@ -65,7 +65,9 @@ async function removeTemporaryData() {
       ],
     },
   });
-  await prisma.recurrences.deleteMany({ where: { category_id: { in: categoryIds } } });
+  await prisma.recurrences.deleteMany({
+    where: { OR: [{ category_id: { in: categoryIds } }, { destination_account_id: { in: accountIds } }] },
+  });
   await prisma.investment_accounts.deleteMany({ where: { id: { in: accountIds } } });
   await prisma.categories.deleteMany({ where: { id: { in: categoryIds } } });
 }
@@ -98,8 +100,9 @@ test('resumo único: totais do mês, caixa, reserva e próximo mês', async () =
   const { nextMonth } = body;
   assert.deepEqual([nextMonth.year, nextMonth.month], [2026, 11]);
   const projected = body.cashBalance + nextMonth.committedIncome - nextMonth.committedEssential
-    - nextMonth.committedNonEssential - nextMonth.committedInvestment;
+    - nextMonth.committedNonEssential - nextMonth.committedInvestment - nextMonth.expectedWalletSpending;
   assert.ok(close(nextMonth.projectedBalance, projected));
+  assert.ok(close(body.cashBalance, body.ledgerBalance + body.walletBalance));
 
   const investments = await call('GET', '/investments?year=2026&month=10');
   const reserveAccounts = investments.body.accounts.filter((a) => ['reserve', 'short_term_reserve'].includes(a.role));
@@ -431,4 +434,81 @@ test('entrada fixa com destino: cada mês gera a entrada e o aporte na conta, se
   const firstOfNewSeries = newRows.find((t) => t.flow === 'income');
   const closed = await call('DELETE', `/transactions/${firstOfNewSeries.id}?applyToFutureSeries=true`);
   assert.equal(closed.body.deleted.length, newRows.length);
+});
+
+test('carteira: transferência fixa não mexe no caixa e a atualização de saldo vira gasto da carteira', async () => {
+  const summaryOf = async (month) => (await call('GET', `/finance/summary?year=${month.slice(0, 4)}&month=${Number(month.slice(5))}`)).body;
+  const before = await summaryOf('2026-11');
+  const decemberBefore = await summaryOf('2026-12');
+  const wallet = await call('POST', '/investment-accounts', {
+    name: `${TEMP_PREFIX} carteira`, role: 'wallet', initialBalance: 100, initialBalanceDate: '2026-11-01',
+  });
+  assert.equal(wallet.status, 201);
+  const walletId = wallet.body.id;
+
+  const transfer = { destinationAccountId: walletId, amount: 750, startDate: '2026-11-02', kind: 'fixed', description: `${TEMP_PREFIX} Meu pagamento` };
+  assert.equal((await call('POST', '/recurrences', { ...transfer, destinationAccountId: null })).status, 400);
+  assert.equal((await call('POST', '/recurrences', { ...transfer, kind: 'installment', installments: 2 })).status, 400);
+  const created = await call('POST', '/recurrences', transfer);
+  assert.equal(created.status, 201);
+  assert.equal(created.body.series.categoryId, null);
+  const { recurrenceId } = created.body;
+  const rows = await seriesRows(recurrenceId);
+  assert.equal(rows.length, created.body.createdCount);
+  assert.ok(rows.every((t) => t.flow === 'investment' && t.direction === 'contribution'));
+
+  const withTransfer = await summaryOf('2026-11');
+  assert.ok(close(withTransfer.cashBalance - before.cashBalance, 100));
+  assert.ok(close(withTransfer.walletBalance - before.walletBalance, 850));
+  assert.ok(close(withTransfer.totalContributions, before.totalContributions));
+  assert.ok(close(withTransfer.investedPosition, before.investedPosition));
+  assert.ok(close(withTransfer.nextMonth.projectedBalance - before.nextMonth.projectedBalance, 100));
+
+  const spent = await call('POST', `/investment-accounts/${walletId}/balance-updates`, { date: '2026-11-20', balance: 300 });
+  assert.equal(spent.status, 201);
+  assert.deepEqual([spent.body.walletAdjustment.flow, spent.body.walletAdjustment.amount, spent.body.yield], ['expense', 550, 0]);
+  const afterSpending = await summaryOf('2026-11');
+  assert.ok(close(afterSpending.walletBalance - before.walletBalance, 300));
+  assert.ok(close(afterSpending.ledgerBalance, withTransfer.ledgerBalance));
+  assert.ok(close(afterSpending.cashBalance, afterSpending.ledgerBalance + afterSpending.walletBalance));
+  assert.ok(close(afterSpending.totalNonEssential - before.totalNonEssential, 550));
+  assert.ok(close(afterSpending.totalEssential, before.totalEssential));
+  const decemberAfter = await summaryOf('2026-12');
+  assert.equal(decemberAfter.reserve.referenceExpense, decemberBefore.reserve.referenceExpense);
+
+  const listed = (await call('GET', '/transactions?year=2026&month=11')).body.find((t) => t.id === spent.body.walletAdjustment.transactionId);
+  assert.equal(listed.walletAccountId, walletId);
+  assert.equal(listed.flow, 'expense');
+  assert.equal((await call('DELETE', `/transactions/${listed.id}`)).status, 422);
+
+  const corrected = await call('POST', `/investment-accounts/${walletId}/balance-updates`, { date: '2026-11-20', balance: 900 });
+  assert.deepEqual([corrected.body.walletAdjustment.flow, corrected.body.walletAdjustment.amount], ['income', 50]);
+  const walletEntries = () => prisma.transactions.count({ where: { balance_update: { investment_account_id: BigInt(walletId) } } });
+  assert.equal(await walletEntries(), 1);
+
+  const investments = (await call('GET', '/investments?year=2026&month=11')).body;
+  assert.ok(investments.accounts.every((a) => a.id !== walletId));
+  const walletView = investments.wallets.find((w) => w.id === walletId);
+  assert.deepEqual([walletView.balance, walletView.monthSpending, walletView.yield], [900, -50, 0]);
+  assert.ok(investments.walletTransactions.some((t) => t.recurrenceId === recurrenceId));
+  assert.ok(investments.transactions.every((t) => t.investmentAccountId !== walletId));
+
+  assert.equal((await call('DELETE', `/investment-accounts/${walletId}/balance-updates/${corrected.body.id}`)).status, 204);
+  assert.equal(await walletEntries(), 0);
+
+  const december = rows.find((t) => isoDate(t.date) === '2026-12-02');
+  const closed = await call('DELETE', `/transactions/${december.id}?applyToFutureSeries=true`);
+  assert.equal(closed.body.deleted.length, rows.length - 1);
+  const reopenSeries = closed.body.closedSeries.map(({ recurrenceId: id, previousEndMonth }) => ({ recurrenceId: id, endMonth: previousEndMonth }));
+  assert.equal((await call('POST', '/transactions/restore', { transactions: closed.body.deleted, reopenSeries })).status, 201);
+  assert.equal((await seriesRows(recurrenceId)).length, rows.length);
+
+  const january = (await seriesRows(recurrenceId)).find((t) => isoDate(t.date) === '2027-01-02');
+  const edited = await call('PUT', `/transactions/${january.id}?applyToFutureSeries=true`, {
+    investmentAccountId: walletId, direction: 'contribution', amount: 800, date: '2027-01-02', description: transfer.description,
+  });
+  assert.equal(edited.status, 200);
+  const newSeries = await prisma.recurrences.findUnique({ where: { id: BigInt(edited.body.recurrenceId) } });
+  assert.deepEqual([newSeries.category_id, Number(newSeries.destination_account_id)], [null, walletId]);
+  assert.ok((await seriesRows(edited.body.recurrenceId)).every((t) => Number(t.amount) === 800 && t.flow === 'investment'));
 });

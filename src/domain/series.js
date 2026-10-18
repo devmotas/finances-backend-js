@@ -2,9 +2,15 @@ const { BadRequestError } = require('../errors/AppError');
 const { FLOW, SERIES_KIND, SERIES_HORIZON_MONTHS, INVESTMENT_DIRECTION } = require('./constants');
 const { addMonthsToDate } = require('../utils/dates');
 const { monthOf, addMonths, monthsDiff, minMonth, maxMonth } = require('./months');
+const { isWallet } = require('./wallet');
 
 const CENTS_PER_UNIT = 100;
 const FIRST_INDEX = 1;
+const TRANSFER_FLOW = FLOW.INVESTMENT;
+const DESTINATION_MESSAGE = 'Só uma entrada fixa pode ir direto para uma conta de investimento.';
+const TRANSFER_DESTINATION_MESSAGE = 'Série sem categoria é uma transferência fixa: informe a Carteira como destino.';
+const SERIES_TARGET_MESSAGE = 'Informe a categoria ou a Carteira de destino da série.';
+const TRANSFER_AMOUNT_MESSAGE = 'O valor da transferência deve ser maior que zero.';
 
 function horizonMonth(today) {
   return addMonths(monthOf(today), SERIES_HORIZON_MONTHS);
@@ -74,10 +80,27 @@ function endMonthAfterClosing(currentEndMonth, closingMonth) {
   return closingMonth;
 }
 
-function assertDestinationAllowed({ kind, flow }) {
-  if (kind !== SERIES_KIND.FIXED || flow !== FLOW.INCOME) {
-    throw new BadRequestError('Só uma entrada fixa pode ir direto para uma conta de investimento.');
+function isTransferFlow(flow) {
+  return flow === TRANSFER_FLOW;
+}
+
+function seriesFlow(category) {
+  return category?.flow ?? TRANSFER_FLOW;
+}
+
+function assertTransferAllowed({ kind, amount }, account) {
+  if (kind !== SERIES_KIND.FIXED || !account || !isWallet(account)) {
+    throw new BadRequestError(TRANSFER_DESTINATION_MESSAGE);
   }
+  if (!(amount > 0)) throw new BadRequestError(TRANSFER_AMOUNT_MESSAGE);
+}
+
+function assertDestinationAllowed({ kind, flow, amount }, account) {
+  if (isTransferFlow(flow)) {
+    assertTransferAllowed({ kind, amount }, account);
+    return;
+  }
+  if (kind !== SERIES_KIND.FIXED || flow !== FLOW.INCOME) throw new BadRequestError(DESTINATION_MESSAGE);
 }
 
 function pairedContribution(incomeRow, account) {
@@ -95,8 +118,14 @@ function withPairedContributions(incomeRows, account) {
   return incomeRows.flatMap((row) => [row, pairedContribution(row, account)]);
 }
 
+function seriesRows(rows, flow, account) {
+  if (isTransferFlow(flow)) return rows.map((row) => pairedContribution(row, account));
+  return withPairedContributions(rows, account);
+}
+
 module.exports = {
   FIRST_INDEX,
+  SERIES_TARGET_MESSAGE,
   horizonMonth,
   installmentEndMonth,
   occurrenceDate,
@@ -106,6 +135,9 @@ module.exports = {
   normalizeSeriesRequest,
   closingMonthBefore,
   endMonthAfterClosing,
+  isTransferFlow,
+  seriesFlow,
   assertDestinationAllowed,
   withPairedContributions,
+  seriesRows,
 };

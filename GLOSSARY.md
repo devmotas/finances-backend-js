@@ -92,6 +92,24 @@ _Avoid_: lucro, juros, valorização
 Soma do valor das contas de investimento numa data: saldo inicial, aportes, resgates e rendimentos.
 _Avoid_: investido, carteira total
 
+## Carteira
+
+**Carteira**:
+Conta com o dinheiro do dia a dia, abastecida pela conta corrente; entra no saldo em caixa e fica fora do patrimônio, dos investimentos e da reserva. As compras feitas com ela não são lançadas uma a uma.
+_Avoid_: conta de investimento, mesada, caixinha
+
+**Transferência para a carteira**:
+Dinheiro que sai da conta corrente e entra na carteira (ou volta dela para a conta corrente); não é saída nem entrada e não muda o saldo em caixa. "Meu pagamento" é uma transferência fixa todo mês.
+_Avoid_: pagamento (como saída), aporte, gasto
+
+**Gastos da carteira**:
+Saída não essencial calculada pela atualização de saldo da carteira: a diferença entre o saldo esperado e o saldo real informado. Se o saldo real for maior, a diferença vira a entrada "Entrada na carteira".
+_Avoid_: ajuste, despesa da carteira, sobra
+
+**Gastos previstos da carteira**:
+Média dos gastos da carteira dos últimos três meses fechados, descontada da previsão do próximo mês (menos o que já foi registrado nele).
+_Avoid_: orçamento da carteira, limite
+
 ## Saldo e reserva
 
 **Saldo do mês**:
@@ -99,8 +117,12 @@ Entradas menos saídas menos aportes mais resgates do mês selecionado.
 _Avoid_: resultado, sobra do mês
 
 **Saldo em caixa**:
-Dinheiro disponível fora dos investimentos no fim do mês selecionado; acumula o saldo de todos os meses até ele, então a sobra de um mês já passa para o seguinte.
+Dinheiro disponível fora dos investimentos no fim do mês selecionado: conta corrente + carteira. Acumula o saldo de todos os meses até ele, então a sobra de um mês já passa para o seguinte.
 _Avoid_: saldo acumulado, sobrou, saldo da conta
+
+**Conta corrente**:
+Conta onde o salário entra e as contas são pagas; é a parte do saldo em caixa formada pelas entradas, saídas, aportes, resgates e transferências registrados.
+_Avoid_: caixa (sozinho), conta principal
 
 **Conta de reserva**:
 Conta de investimento marcada pelo usuário como parte da reserva de emergência; quase nunca é mexida.

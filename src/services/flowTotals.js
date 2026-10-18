@@ -1,35 +1,21 @@
-const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = require('../db/prisma');
-const { FLOW, EXPENSE_GROUP, INVESTMENT_DIRECTION } = require('../domain/constants');
+const { ACCOUNT_ROLE } = require('../domain/constants');
+const { emptyTotals, addRow } = require('../domain/totals');
 const { formatMonth, firstDay, lastDay } = require('../domain/months');
 
 const EARLIEST_DATE = new Date(Date.UTC(1900, 0, 1));
 
-function emptyTotals() {
-  const zero = new Decimal(0);
-  return { income: zero, essential: zero, nonEssential: zero, expenses: zero, contributions: zero, withdrawals: zero, count: 0 };
-}
-
-function fieldOf(row) {
-  if (row.flow === FLOW.INCOME) return 'income';
-  if (row.flow === FLOW.EXPENSE) return row.expense_group === EXPENSE_GROUP.ESSENTIAL ? 'essential' : 'nonEssential';
-  return row.direction === INVESTMENT_DIRECTION.WITHDRAWAL ? 'withdrawals' : 'contributions';
-}
-
-function addRow(totals, row) {
-  const field = fieldOf(row);
-  const next = { ...totals, [field]: totals[field].plus(row.total), count: totals.count + row.count };
-  return { ...next, expenses: next.essential.plus(next.nonEssential) };
-}
-
 function groupedRows(userId, from, to) {
   return prisma.$queryRaw`
     SELECT to_char(t.date, 'YYYY-MM') AS month, t.flow, c.expense_group, t.direction,
+           COALESCE(a.role = ${ACCOUNT_ROLE.WALLET}, false) AS to_wallet,
+           t.balance_update_id IS NOT NULL AS from_wallet,
            SUM(t.amount) AS total, COUNT(*)::int AS count
     FROM transactions t
     LEFT JOIN categories c ON c.id = t.category_id
+    LEFT JOIN investment_accounts a ON a.id = t.investment_account_id
     WHERE t.user_id = ${BigInt(userId)} AND t.date >= ${from} AND t.date <= ${to}
-    GROUP BY 1, 2, 3, 4`;
+    GROUP BY 1, 2, 3, 4, 5, 6`;
 }
 
 async function totalsBetween(userId, from, to) {

@@ -1,5 +1,5 @@
 const { Decimal } = require('@prisma/client/runtime/library');
-const { INVESTMENT_DIRECTION } = require('./constants');
+const { INVESTMENT_DIRECTION, FLOW } = require('./constants');
 
 const ZERO = new Decimal(0);
 
@@ -14,8 +14,20 @@ function sumDirection(movements, direction) {
     .reduce((acc, m) => acc.plus(m.amount), ZERO);
 }
 
-function bookValue(initialBalance, movements) {
-  return movements.reduce((acc, m) => acc.plus(signedAmount(m.direction, m.amount)), new Decimal(initialBalance));
+function movementValue(movement) {
+  if (movement.flow === FLOW.EXPENSE) return new Decimal(movement.amount).negated();
+  if (movement.flow === FLOW.INCOME) return new Decimal(movement.amount);
+  return signedAmount(movement.direction, movement.amount);
+}
+
+function openingAt({ initialBalance, initialBalanceDate }, until) {
+  return initialBalanceDate && until < initialBalanceDate ? ZERO : new Decimal(initialBalance);
+}
+
+function bookAt(account, movements, until) {
+  return movements
+    .filter((m) => m.date <= until)
+    .reduce((acc, m) => acc.plus(movementValue(m)), openingAt(account, until));
 }
 
 function latestUpdateUntil(balanceUpdates, until) {
@@ -24,20 +36,26 @@ function latestUpdateUntil(balanceUpdates, until) {
     .reduce((latest, u) => (latest == null || u.date > latest.date ? u : latest), null);
 }
 
-function yieldAt(initialBalance, movements, update) {
+function yieldAt(account, movements, update) {
   if (update == null) return ZERO;
-  const bookAtUpdate = bookValue(initialBalance, movements.filter((m) => m.date <= update.date));
-  return new Decimal(update.balance).minus(bookAtUpdate);
+  return new Decimal(update.balance).minus(bookAt(account, movements, update.date));
 }
 
-function accountPosition({ initialBalance, movements, balanceUpdates }, until) {
-  const movementsUntil = movements.filter((m) => m.date <= until);
-  const lastBalanceUpdate = latestUpdateUntil(balanceUpdates, until);
-  const book = bookValue(initialBalance, movementsUntil);
-  const accountYield = yieldAt(initialBalance, movementsUntil, lastBalanceUpdate);
+function walletSpending(movements) {
+  return movements
+    .filter((m) => m.flow === FLOW.EXPENSE || m.flow === FLOW.INCOME)
+    .reduce((acc, m) => acc.minus(movementValue(m)), ZERO);
+}
+
+function accountPosition(account, until) {
+  const movementsUntil = account.movements.filter((m) => m.date <= until);
+  const lastBalanceUpdate = latestUpdateUntil(account.balanceUpdates, until);
+  const book = bookAt(account, movementsUntil, until);
+  const accountYield = yieldAt(account, movementsUntil, lastBalanceUpdate);
   return {
     contributions: sumDirection(movementsUntil, INVESTMENT_DIRECTION.CONTRIBUTION),
     withdrawals: sumDirection(movementsUntil, INVESTMENT_DIRECTION.WITHDRAWAL),
+    spending: walletSpending(movementsUntil),
     book,
     yield: accountYield,
     position: book.plus(accountYield),
