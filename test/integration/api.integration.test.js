@@ -114,9 +114,31 @@ test('validações de entrada respondem 400', async () => {
   assert.equal((await call('GET', '/finance/summary?year=2026&month=13')).status, 400);
 });
 
+test('excluir este e os próximos devolve os lançamentos e desfazer recria a série', async () => {
+  const before = await transactionsOfCategory();
+  const removed = await call('DELETE', `/transactions/${before[0].id}?applyToFutureSeries=true`);
+  assert.equal(removed.status, 200);
+  assert.equal(removed.body.deleted.length, before.length);
+  assert.equal((await transactionsOfCategory()).length, 0);
+
+  const restored = await call('POST', '/transactions/restore', { transactions: removed.body.deleted });
+  assert.equal(restored.status, 201);
+  const after = await transactionsOfCategory();
+  assert.deepEqual(
+    after.map((t) => [t.date.toISOString().slice(0, 10), t.description, t.recurrence_id, t.recurrence_index]),
+    before.map((t) => [t.date.toISOString().slice(0, 10), t.description, t.recurrence_id, t.recurrence_index])
+  );
+});
+
+test('desfazer com categoria de outro usuário responde 404', async () => {
+  const foreign = { categoryId: 999999999, amount: 10, date: '2027-01-10', recurrenceId: null };
+  assert.equal((await call('POST', '/transactions/restore', { transactions: [foreign] })).status, 404);
+  assert.equal((await call('POST', '/transactions/restore', { transactions: [] })).status, 400);
+});
+
 test('excluir a série e depois a categoria com série responde 422', async () => {
   const [first] = await transactionsOfCategory();
-  assert.equal((await call('DELETE', `/transactions/${first.id}?applyToFutureSeries=true`)).status, 204);
+  assert.equal((await call('DELETE', `/transactions/${first.id}?applyToFutureSeries=true`)).status, 200);
   assert.equal((await transactionsOfCategory()).length, 0);
   assert.equal((await call('DELETE', `/categories/${categoryId}`)).status, 422);
 });

@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const { z } = require('zod');
 const auth = require('../middleware/auth');
-const { parseId, parseYearMonth, DESCRIPTION_MAX, ISO_DATE } = require('../validation/common');
+const { parseId, parseYearMonth, DESCRIPTION_MAX, ISO_DATE, SERIES_MONTHS_MAX } = require('../validation/common');
 const { SCHEDULE } = require('../domain/constants');
 const transactionService = require('../services/transactionService');
 
@@ -14,6 +14,23 @@ const txSchema = z.object({
   amount: z.number(),
   date: z.string().regex(ISO_DATE),
   schedule: z.nativeEnum(SCHEDULE),
+});
+
+const restoreSchema = z.object({
+  transactions: z
+    .array(
+      z.object({
+        categoryId: z.number().int().positive(),
+        description: z.string().max(DESCRIPTION_MAX).nullable().optional(),
+        amount: z.number(),
+        date: z.string().regex(ISO_DATE),
+        schedule: z.nativeEnum(SCHEDULE).optional(),
+        recurrenceId: z.number().int().positive().nullable().optional(),
+        recurrenceIndex: z.number().int().positive().nullable().optional(),
+      })
+    )
+    .min(1)
+    .max(SERIES_MONTHS_MAX),
 });
 
 router.get('/', async (req, res, next) => {
@@ -36,6 +53,16 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+router.post('/restore', async (req, res, next) => {
+  try {
+    const { transactions } = restoreSchema.parse(req.body);
+    const restored = await transactionService.restore(req.userId, transactions);
+    res.status(201).json({ restored });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/:id', async (req, res, next) => {
   try {
     const body = txSchema.parse(req.body);
@@ -50,8 +77,8 @@ router.put('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const applyToFutureSeries = req.query.applyToFutureSeries === 'true';
-    await transactionService.remove(req.userId, parseId(req.params), applyToFutureSeries);
-    res.status(204).send();
+    const deleted = await transactionService.remove(req.userId, parseId(req.params), applyToFutureSeries);
+    res.json({ deleted });
   } catch (err) {
     next(err);
   }
