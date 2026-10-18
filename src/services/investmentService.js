@@ -66,6 +66,7 @@ function accountView(entry, end, previousEnd) {
     ...toAccountWithPositionDto(entry, end),
     monthContributions: money(atEnd.contributions.minus(atPreviousEnd.contributions)),
     monthWithdrawals: money(atEnd.withdrawals.minus(atPreviousEnd.withdrawals)),
+    monthYield: money(atEnd.yield.minus(atPreviousEnd.yield)),
   };
 }
 
@@ -96,6 +97,7 @@ async function monthView(userId, year, month) {
       positionBeforeMonth: money(atPreviousEnd.position),
       positionThroughMonthEnd: money(atEnd.position),
       yieldThroughMonthEnd: money(atEnd.yield),
+      monthYield: money(atEnd.yield.minus(atPreviousEnd.yield)),
     },
     accounts,
     transactions: allMonthTxs.filter((t) => t.flow === FLOW.INVESTMENT),
