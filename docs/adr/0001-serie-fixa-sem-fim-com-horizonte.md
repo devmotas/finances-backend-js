@@ -1,0 +1,3 @@
+# Série fixa sem fim, gerada num horizonte móvel de 12 meses
+
+Lançamentos fixos não têm data para acabar; a série guarda tipo (fixa ou parcelada), valor, mês de início e mês de fim (vazio = sem fim), e o backend mantém sempre os lançamentos gerados até 12 meses à frente do mês atual. Escolhemos materializar num horizonte móvel, e não gerar os lançamentos na hora da leitura, porque cada mês pode ter valores editados à mão, exclusões pontuais e desfazer exclusão, e tudo isso já funciona sobre linhas reais; a série passa a ser a fonte de verdade e os lançamentos futuros são reabastecidos a partir dela. Decidido na sessão do ticket 14 (2026-10-18), depois que todas as séries antigas acabariam até 03/2027 e a previsão sumiria.

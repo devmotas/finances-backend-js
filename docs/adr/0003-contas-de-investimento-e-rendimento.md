@@ -1,0 +1,3 @@
+# Contas de investimento separadas das categorias, com rendimento por atualização de saldo
+
+Contas de investimento deixam de ser categorias e passam a ter registro próprio (nome, saldo inicial, se fazem parte da reserva); aporte e resgate são lançamentos de valor positivo com direção, e não valores negativos. O rendimento é medido por atualizações de saldo informadas pelo usuário (a diferença entre o saldo real e saldo inicial + aportes − resgates), como fazem YNAB e Monarch, em vez de um lançamento manual de "rendimento" ou de ignorar o rendimento: assim o patrimônio mostra o valor real sem misturar o que o usuário guardou com o que o mercado rendeu. Decidido na sessão do ticket 14 (2026-10-18).
