@@ -462,7 +462,9 @@ test('carteira: transferência fixa não mexe no caixa e a atualização de sald
   assert.ok(close(withTransfer.walletBalance - before.walletBalance, 850));
   assert.ok(close(withTransfer.totalContributions, before.totalContributions));
   assert.ok(close(withTransfer.investedPosition, before.investedPosition));
-  assert.ok(close(withTransfer.nextMonth.projectedBalance - before.nextMonth.projectedBalance, 100));
+  assert.ok(withTransfer.nextMonth.expectedWalletSpending >= 750);
+  const addedWalletSpending = withTransfer.nextMonth.expectedWalletSpending - before.nextMonth.expectedWalletSpending;
+  assert.ok(close(withTransfer.nextMonth.projectedBalance - before.nextMonth.projectedBalance, 100 - addedWalletSpending));
 
   const spent = await call('POST', `/investment-accounts/${walletId}/balance-updates`, { date: '2026-11-20', balance: 300 });
   assert.equal(spent.status, 201);

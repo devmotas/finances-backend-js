@@ -107,7 +107,7 @@ Saída não essencial calculada pela atualização de saldo da carteira: a difer
 _Avoid_: ajuste, despesa da carteira, sobra
 
 **Gastos previstos da carteira**:
-Média dos gastos da carteira dos últimos três meses fechados, descontada da previsão do próximo mês (menos o que já foi registrado nele).
+Quanto a previsão do próximo mês desconta da carteira: a média dos gastos da carteira dos últimos três meses fechados (sem histórico, o gasto do mês selecionado), nunca menos do que vai entrar na carteira no próximo mês, menos o que já foi registrado nele. Dinheiro mandado para a carteira conta como gasto previsto, não como sobra.
 _Avoid_: orçamento da carteira, limite
 
 ## Saldo e reserva

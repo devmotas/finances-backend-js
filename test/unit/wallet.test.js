@@ -11,6 +11,7 @@ const {
   walletSpendingWindow,
   averageWalletSpending,
   remainingWalletSpending,
+  expectedWalletSpending,
 } = require('../../src/domain/wallet');
 
 const date = (text) => new Date(`${text}T00:00:00Z`);
@@ -105,8 +106,26 @@ test('próximo mês desconta a média dos gastos da carteira dos três meses fec
   assert.equal(remainingWalletSpending(average, alreadySpent).toNumber(), 350);
 });
 
-test('sem histórico de gastos da carteira a previsão não desconta nada', () => {
-  const average = averageWalletSpending([emptyTotals(), totalsOf([salary]), emptyTotals()]);
-  assert.equal(average.toNumber(), 0);
-  assert.equal(remainingWalletSpending(average, emptyTotals()).toNumber(), 0);
+test('sem histórico de meses fechados a previsão usa o gasto da carteira do mês selecionado', () => {
+  const history = [emptyTotals(), totalsOf([salary]), emptyTotals()];
+  const selected = totalsOf([salary, walletSpendingRow('890.10')]);
+  assert.equal(expectedWalletSpending(history, selected, totalsOf([salary])).toNumber(), 890.1);
+});
+
+test('a previsão desconta no mínimo o que vai entrar na carteira no próximo mês', () => {
+  const history = [totalsOf([walletSpendingRow('300')]), emptyTotals(), emptyTotals()];
+  const next = totalsOf([salary, transferIn]);
+  assert.equal(expectedWalletSpending(history, emptyTotals(), next).toNumber(), 750);
+  assert.equal(expectedWalletSpending([emptyTotals()], emptyTotals(), next).toNumber(), 750);
+  assert.equal(projectedBalance(new Decimal(100), next, expectedWalletSpending(history, emptyTotals(), next)).toNumber(), 350);
+});
+
+test('o que já foi gasto da carteira no próximo mês sai do previsto', () => {
+  const history = [totalsOf([walletSpendingRow('900')])];
+  const next = totalsOf([transferIn, walletSpendingRow('200')]);
+  assert.equal(expectedWalletSpending(history, emptyTotals(), next).toNumber(), 700);
+});
+
+test('sem histórico, sem gasto no mês e sem transferência a previsão não desconta nada', () => {
+  assert.equal(expectedWalletSpending([emptyTotals()], totalsOf([salary]), emptyTotals()).toNumber(), 0);
 });
