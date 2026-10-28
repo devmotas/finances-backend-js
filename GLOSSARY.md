@@ -106,11 +106,19 @@ _Avoid_: pagamento (como saída), aporte, gasto
 Saída não essencial calculada pela atualização de saldo da carteira: a diferença entre o saldo esperado e o saldo real informado. Se o saldo real for maior, a diferença vira a entrada "Entrada na carteira".
 _Avoid_: ajuste, despesa da carteira, sobra
 
-**Gastos previstos da carteira**:
-Quanto a previsão do próximo mês desconta da carteira: a média dos gastos da carteira dos últimos três meses fechados (sem histórico, o gasto do mês selecionado), nunca menos do que vai entrar na carteira no próximo mês, menos o que já foi registrado nele. Dinheiro mandado para a carteira conta como gasto previsto, não como sobra.
-_Avoid_: orçamento da carteira, limite
+**Disponível para a carteira**:
+Quanto dá para mandar para a carteira no próximo mês sem a conta corrente ficar negativa: saldo da conta corrente no fim do mês selecionado + entradas − contas − investimentos do próximo mês. O valor da transferência muda conforme o mês está apertado ou folgado.
+_Avoid_: mesada, limite da carteira
+
+**Média de gastos da carteira**:
+Média dos gastos da carteira dos três meses até o selecionado (só os que têm gasto); serve de referência para escolher o valor da transferência e não entra na previsão.
+_Avoid_: gastos previstos da carteira, orçamento da carteira
 
 ## Saldo e reserva
+
+**Fechamento do mês**:
+Entradas menos contas, investimentos e transferências para a carteira do mês, visto pela conta corrente; os gastos feitos com a carteira ficam de fora. O ideal é fechar perto de zero e nunca negativo: se sobra, aumenta a carteira ou investe; se falta, diminui a carteira.
+_Avoid_: saldo do mês, sobra
 
 **Saldo do mês**:
 Entradas menos saídas menos aportes mais resgates do mês selecionado.

@@ -99,9 +99,15 @@ test('resumo único: totais do mês, caixa, reserva e próximo mês', async () =
 
   const { nextMonth } = body;
   assert.deepEqual([nextMonth.year, nextMonth.month], [2026, 11]);
-  const projected = body.cashBalance + nextMonth.committedIncome - nextMonth.committedEssential
-    - nextMonth.committedNonEssential - nextMonth.committedInvestment - nextMonth.expectedWalletSpending;
-  assert.ok(close(nextMonth.projectedBalance, projected));
+  const available = body.ledgerBalance + nextMonth.committedIncome - nextMonth.committedEssential
+    - nextMonth.committedNonEssential - nextMonth.committedInvestment;
+  assert.ok(close(nextMonth.availableForWallet, available));
+  assert.ok(close(nextMonth.projectedClosing, available - nextMonth.plannedWalletTransfer));
+
+  const { monthClosing, wallet } = body;
+  assert.ok(close(monthClosing.balance, monthClosing.income - monthClosing.bills - monthClosing.investments - monthClosing.walletTransfers));
+  assert.ok(close(wallet.balance, wallet.openingBalance + wallet.transfers - wallet.spending));
+  assert.ok(close(wallet.balance, body.walletBalance));
   assert.ok(close(body.cashBalance, body.ledgerBalance + body.walletBalance));
 
   const investments = await call('GET', '/investments?year=2026&month=10');
@@ -462,9 +468,10 @@ test('carteira: transferência fixa não mexe no caixa e a atualização de sald
   assert.ok(close(withTransfer.walletBalance - before.walletBalance, 850));
   assert.ok(close(withTransfer.totalContributions, before.totalContributions));
   assert.ok(close(withTransfer.investedPosition, before.investedPosition));
-  assert.ok(withTransfer.nextMonth.expectedWalletSpending >= 750);
-  const addedWalletSpending = withTransfer.nextMonth.expectedWalletSpending - before.nextMonth.expectedWalletSpending;
-  assert.ok(close(withTransfer.nextMonth.projectedBalance - before.nextMonth.projectedBalance, 100 - addedWalletSpending));
+  assert.ok(close(withTransfer.monthClosing.walletTransfers - before.monthClosing.walletTransfers, 750));
+  assert.ok(close(withTransfer.monthClosing.balance - before.monthClosing.balance, -750));
+  assert.ok(close(withTransfer.nextMonth.plannedWalletTransfer - before.nextMonth.plannedWalletTransfer, 750));
+  assert.ok(close(withTransfer.nextMonth.projectedClosing - before.nextMonth.projectedClosing, -1500));
 
   const spent = await call('POST', `/investment-accounts/${walletId}/balance-updates`, { date: '2026-11-20', balance: 300 });
   assert.equal(spent.status, 201);

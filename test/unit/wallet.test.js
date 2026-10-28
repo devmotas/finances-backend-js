@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Decimal } = require('@prisma/client/runtime/library');
 const { emptyTotals, addRow } = require('../../src/domain/totals');
-const { netCash, ledgerCash, cashBalanceOf, projectedBalance } = require('../../src/domain/balances');
+const { netCash, ledgerCash, cashBalanceOf, monthClosing, nextMonthPlan } = require('../../src/domain/balances');
 const { accountPosition } = require('../../src/domain/investmentPosition');
 const { referenceExpense } = require('../../src/domain/reserve');
 const {
@@ -10,8 +10,6 @@ const {
   walletAdjustment,
   walletSpendingWindow,
   averageWalletSpending,
-  remainingWalletSpending,
-  expectedWalletSpending,
 } = require('../../src/domain/wallet');
 
 const date = (text) => new Date(`${text}T00:00:00Z`);
@@ -89,43 +87,37 @@ test('despesa de referência da reserva ignora os gastos da carteira', () => {
   assert.equal(reference.toNumber(), 1000);
 });
 
-test('próximo mês desconta a média dos gastos da carteira dos três meses fechados', () => {
+const bill = { flow: 'expense', expense_group: 'essential', direction: null, to_wallet: false, from_wallet: false, total: '600', count: 1 };
+const contribution = { flow: 'investment', expense_group: null, direction: 'contribution', to_wallet: false, from_wallet: false, total: '100', count: 1 };
+
+test('média de referência dos gastos da carteira considera só os meses com gasto', () => {
   assert.deepEqual(walletSpendingWindow({ year: 2027, month: 2 }), {
     from: { year: 2026, month: 11 },
     to: { year: 2027, month: 1 },
   });
   const window = [totalsOf([walletSpendingRow('300')]), totalsOf([walletSpendingRow('600')]), totalsOf([salary])];
-  const average = averageWalletSpending(window);
-  assert.equal(average.toNumber(), 450);
-
-  const next = totalsOf([salary, transferIn]);
-  const expected = remainingWalletSpending(average, next);
-  assert.equal(projectedBalance(new Decimal(100), next, expected).toNumber(), 650);
-
-  const alreadySpent = totalsOf([walletSpendingRow('100')]);
-  assert.equal(remainingWalletSpending(average, alreadySpent).toNumber(), 350);
+  assert.equal(averageWalletSpending(window).toNumber(), 450);
+  assert.equal(averageWalletSpending([emptyTotals(), totalsOf([salary])]).toNumber(), 0);
 });
 
-test('sem histórico de meses fechados a previsão usa o gasto da carteira do mês selecionado', () => {
-  const history = [emptyTotals(), totalsOf([salary]), emptyTotals()];
-  const selected = totalsOf([salary, walletSpendingRow('890.10')]);
-  assert.equal(expectedWalletSpending(history, selected, totalsOf([salary])).toNumber(), 890.1);
+test('fechamento do mês trata a carteira como saída e ignora os gastos feitos com ela', () => {
+  const month = totalsOf([salary, bill, contribution, transferIn, walletSpendingRow('500')]);
+  const closing = monthClosing(month);
+  assert.deepEqual(
+    [closing.income, closing.bills, closing.investments, closing.walletTransfers, closing.balance].map((v) => v.toNumber()),
+    [1000, 600, 100, 750, -450]
+  );
+  assert.equal(closing.balance.toNumber(), ledgerCash(month).toNumber());
 });
 
-test('a previsão desconta no mínimo o que vai entrar na carteira no próximo mês', () => {
-  const history = [totalsOf([walletSpendingRow('300')]), emptyTotals(), emptyTotals()];
-  const next = totalsOf([salary, transferIn]);
-  assert.equal(expectedWalletSpending(history, emptyTotals(), next).toNumber(), 750);
-  assert.equal(expectedWalletSpending([emptyTotals()], emptyTotals(), next).toNumber(), 750);
-  assert.equal(projectedBalance(new Decimal(100), next, expectedWalletSpending(history, emptyTotals(), next)).toNumber(), 350);
-});
+test('próximo mês mostra quanto dá para mandar para a carteira e o fechamento com o valor planejado', () => {
+  const next = totalsOf([salary, bill, contribution, transferIn]);
+  const plan = nextMonthPlan(new Decimal(50), next);
+  assert.equal(plan.availableForWallet.toNumber(), 350);
+  assert.equal(plan.plannedWalletTransfer.toNumber(), 750);
+  assert.equal(plan.projectedClosing.toNumber(), -400);
 
-test('o que já foi gasto da carteira no próximo mês sai do previsto', () => {
-  const history = [totalsOf([walletSpendingRow('900')])];
-  const next = totalsOf([transferIn, walletSpendingRow('200')]);
-  assert.equal(expectedWalletSpending(history, emptyTotals(), next).toNumber(), 700);
-});
-
-test('sem histórico, sem gasto no mês e sem transferência a previsão não desconta nada', () => {
-  assert.equal(expectedWalletSpending([emptyTotals()], totalsOf([salary]), emptyTotals()).toNumber(), 0);
+  const withoutTransfer = nextMonthPlan(new Decimal(50), totalsOf([salary, bill]));
+  assert.equal(withoutTransfer.availableForWallet.toNumber(), 450);
+  assert.equal(withoutTransfer.projectedClosing.toNumber(), 450);
 });

@@ -1,12 +1,12 @@
 const { Decimal } = require('@prisma/client/runtime/library');
 const prisma = require('../db/prisma');
 const { NotFoundError } = require('../errors/AppError');
-const { netCash, ledgerCash, cashBalanceOf, projectedBalance } = require('../domain/balances');
+const { netCash, ledgerCash, cashBalanceOf, monthClosing, nextMonthPlan } = require('../domain/balances');
 const { ACCOUNT_ROLE } = require('../domain/constants');
 const { addMonths, firstDay, lastDay, monthsBetween } = require('../domain/months');
 const { missingToTarget } = require('../domain/investmentPosition');
 const { referenceWindow, referenceExpense, coverageMonths } = require('../domain/reserve');
-const { isWallet, walletSpendingWindow, expectedWalletSpending } = require('../domain/wallet');
+const { isWallet, walletSpendingWindow, netWalletSpending, averageWalletSpending } = require('../domain/wallet');
 const { totalsBetween, monthlyTotals } = require('./flowTotals');
 const { topUpSeries } = require('./seriesService');
 const { loadPortfolio, positionOf, money } = require('./investmentAccountService');
@@ -50,18 +50,34 @@ function buildReserve(positions, windowTotals, targetMonths) {
   };
 }
 
-function buildNextMonth(next, nextTotals, cashBalance, walletSpending) {
-  const committedInvestment = nextTotals.contributions.minus(nextTotals.withdrawals);
+function moneyFields(values) {
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, money(value)]));
+}
+
+function buildNextMonth(next, nextTotals, ledgerBalance, walletWindowTotals) {
+  const plan = nextMonthPlan(ledgerBalance, nextTotals);
   return {
     year: next.year,
     month: next.month,
-    committedIncome: money(nextTotals.income),
-    committedEssential: money(nextTotals.essential),
-    committedNonEssential: money(nextTotals.nonEssential),
-    committedInvestment: money(committedInvestment),
-    expectedWalletSpending: money(walletSpending),
-    projectedBalance: money(projectedBalance(cashBalance, nextTotals, walletSpending)),
+    committedIncome: money(plan.income),
+    committedEssential: money(plan.essential),
+    committedNonEssential: money(plan.nonEssential),
+    committedInvestment: money(plan.investments),
+    availableForWallet: money(plan.availableForWallet),
+    plannedWalletTransfer: money(plan.plannedWalletTransfer),
+    projectedClosing: money(plan.projectedClosing),
+    walletAverageSpending: money(averageWalletSpending(walletWindowTotals)),
   };
+}
+
+function buildWallet(walletEntries, previousEnd, end, monthTotals) {
+  const closing = monthClosing(monthTotals);
+  return moneyFields({
+    openingBalance: sum(walletEntries.map((entry) => positionOf(entry, previousEnd).position)),
+    transfers: closing.walletTransfers,
+    spending: netWalletSpending(monthTotals),
+    balance: sum(walletEntries.map((entry) => positionOf(entry, end).position)),
+  });
 }
 
 async function summary(userId, year, month) {
@@ -73,7 +89,7 @@ async function summary(userId, year, month) {
   const selected = { year, month };
   const next = addMonths(selected, 1);
   const window = referenceWindow(selected);
-  const walletWindow = walletSpendingWindow(selected);
+  const walletWindow = walletSpendingWindow(next);
   const end = lastDay(selected);
 
   const cumulative = await totalsBetween(uid, null, end);
@@ -86,7 +102,7 @@ async function summary(userId, year, month) {
   const allPositions = accountPositions(portfolio, end);
   const positions = allPositions.filter((p) => !isWallet(p.account));
   const walletBalances = allPositions.filter((p) => isWallet(p.account)).map((p) => p.position);
-  const walletSpending = expectedWalletSpending(walletSpendingTotals, monthTotals, nextTotals);
+  const walletEntries = portfolio.filter((entry) => isWallet(entry.account));
   const ledgerBalance = ledgerCash(cumulative);
   const cashBalance = cashBalanceOf(ledgerBalance, walletBalances);
   const investedPosition = sum(positions.map((p) => p.position));
@@ -103,6 +119,8 @@ async function summary(userId, year, month) {
     totalWithdrawals: money(monthTotals.withdrawals),
     netInvested: money(monthTotals.contributions.minus(monthTotals.withdrawals)),
     monthBalance: money(netCash(monthTotals)),
+    monthClosing: moneyFields(monthClosing(monthTotals)),
+    wallet: buildWallet(walletEntries, lastDay(addMonths(selected, -1)), end, monthTotals),
     cashBalance: money(cashBalance),
     ledgerBalance: money(ledgerBalance),
     walletBalance: money(sum(walletBalances)),
@@ -110,7 +128,7 @@ async function summary(userId, year, month) {
     investedYield: money(sum(positions.map((p) => p.yield))),
     investedBookValue: money(sum(positions.map((p) => p.book))),
     reserve,
-    nextMonth: buildNextMonth(next, nextTotals, cashBalance, walletSpending),
+    nextMonth: buildNextMonth(next, nextTotals, ledgerBalance, walletSpendingTotals),
     accumulatedBalance: money(cashBalance),
     openingBalanceAmount: money(sum(positions.map((p) => p.account.initial_balance))),
     monthExpenseTotal: money(monthTotals.expenses),

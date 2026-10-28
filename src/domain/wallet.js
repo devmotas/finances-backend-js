@@ -34,31 +34,11 @@ function averageWalletSpending(windowTotals) {
   return Decimal.max(ZERO, total.dividedBy(withEntries.length));
 }
 
-function remainingWalletSpending(average, monthTotals) {
-  return Decimal.max(ZERO, average.minus(netWalletSpending(monthTotals)));
-}
-
-function netTransfersToWallet(totals) {
-  return Decimal.max(ZERO, totals.transfersIn.minus(totals.transfersOut));
-}
-
-function baselineWalletSpending(windowTotals, selectedTotals) {
-  const hasHistory = windowTotals.some((t) => t.walletCount > 0);
-  if (hasHistory) return averageWalletSpending(windowTotals);
-  return Decimal.max(ZERO, netWalletSpending(selectedTotals));
-}
-
-function expectedWalletSpending(windowTotals, selectedTotals, nextTotals) {
-  const baseline = Decimal.max(baselineWalletSpending(windowTotals, selectedTotals), netTransfersToWallet(nextTotals));
-  return remainingWalletSpending(baseline, nextTotals);
-}
-
 module.exports = {
   WALLET_CATEGORY,
   isWallet,
   walletAdjustment,
   walletSpendingWindow,
+  netWalletSpending,
   averageWalletSpending,
-  remainingWalletSpending,
-  expectedWalletSpending,
 };
