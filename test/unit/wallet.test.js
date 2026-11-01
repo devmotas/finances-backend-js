@@ -10,6 +10,7 @@ const {
   walletAdjustment,
   walletSpendingWindow,
   averageWalletSpending,
+  isWalletCategory,
 } = require('../../src/domain/wallet');
 
 const date = (text) => new Date(`${text}T00:00:00Z`);
@@ -120,4 +121,11 @@ test('próximo mês mostra quanto dá para mandar para a carteira e o fechamento
   const withoutTransfer = nextMonthPlan(new Decimal(50), totalsOf([salary, bill]));
   assert.equal(withoutTransfer.availableForWallet.toNumber(), 450);
   assert.equal(withoutTransfer.projectedClosing.toNumber(), 450);
+});
+
+test('categoria da carteira é reconhecida pelo nome e pelo tipo, sem diferenciar maiúsculas', () => {
+  assert.equal(isWalletCategory({ name: 'Gastos da carteira', flow: 'expense' }), true);
+  assert.equal(isWalletCategory({ name: 'entrada na carteira', flow: 'income' }), true);
+  assert.equal(isWalletCategory({ name: 'Gastos da carteira', flow: 'income' }), false);
+  assert.equal(isWalletCategory({ name: 'Lazer', flow: 'expense' }), false);
 });

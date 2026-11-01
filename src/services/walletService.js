@@ -1,7 +1,15 @@
-const { accountPosition } = require('../domain/investmentPosition');
+const { bookAtUpdate } = require('../domain/investmentPosition');
 const { WALLET_CATEGORY, walletAdjustment } = require('../domain/wallet');
 
-const MOVEMENT_SELECT = Object.freeze({ id: true, date: true, direction: true, amount: true, flow: true });
+const MOVEMENT_SELECT = Object.freeze({
+  id: true,
+  date: true,
+  direction: true,
+  amount: true,
+  flow: true,
+  created_at: true,
+  balance_update_id: true,
+});
 
 async function walletCategory(db, userId, flow) {
   const { name, expenseGroup } = WALLET_CATEGORY[flow];
@@ -21,14 +29,9 @@ function walletMovements(db, accountId) {
   });
 }
 
-function expectedBalance(account, movements, date) {
-  const wallet = {
-    initialBalance: account.initial_balance,
-    initialBalanceDate: account.initial_balance_date,
-    movements,
-    balanceUpdates: [],
-  };
-  return accountPosition(wallet, date).book;
+function expectedBalance(account, movements, update) {
+  const wallet = { initialBalance: account.initial_balance, initialBalanceDate: account.initial_balance_date };
+  return bookAtUpdate(wallet, movements, update);
 }
 
 async function createEntry(db, account, update, adjustment) {
@@ -55,7 +58,7 @@ async function reconcileWallet(db, account, fromDate) {
   const movements = await walletMovements(db, account.id);
   const entries = new Map();
   for (const update of updates) {
-    const adjustment = walletAdjustment(update.balance, expectedBalance(account, movements, update.date));
+    const adjustment = walletAdjustment(update.balance, expectedBalance(account, movements, update));
     if (!adjustment) continue;
     const entry = await createEntry(db, account, update, adjustment);
     movements.push(entry);

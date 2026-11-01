@@ -1,9 +1,10 @@
 const prisma = require('../db/prisma');
 const { INTERACTIVE_TRANSACTION_OPTIONS } = require('../db/transactionOptions');
-const { NotFoundError, BadRequestError } = require('../errors/AppError');
+const { NotFoundError, BadRequestError, UnprocessableError } = require('../errors/AppError');
 const { validateAmount } = require('../domain/amount');
 const { seriesDescription } = require('../domain/installment');
 const { FLOW, SERIES_KIND } = require('../domain/constants');
+const { isWalletCategory, WALLET_CATEGORY_MESSAGE } = require('../domain/wallet');
 const { monthOf, firstDay, monthsDiff, formatMonth, parseMonth, formatDate } = require('../domain/months');
 const {
   FIRST_INDEX,
@@ -99,6 +100,7 @@ async function seriesCategory(userId, categoryId) {
     where: { id: BigInt(categoryId), user_id: BigInt(userId) },
   });
   if (!category) throw new NotFoundError('Categoria não encontrada.');
+  if (isWalletCategory(category)) throw new UnprocessableError(WALLET_CATEGORY_MESSAGE);
   if (category.flow === FLOW.INVESTMENT) {
     throw new BadRequestError(
       'Não é possível criar série para investimentos. Registre cada aporte ou resgate na conta de investimento.'

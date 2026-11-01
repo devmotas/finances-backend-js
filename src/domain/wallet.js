@@ -9,6 +9,14 @@ const WALLET_CATEGORY = Object.freeze({
   [FLOW.INCOME]: Object.freeze({ name: 'Entrada na carteira', flow: FLOW.INCOME, expenseGroup: null }),
 });
 
+const WALLET_CATEGORY_MESSAGE =
+  'Esta categoria é preenchida pela atualização de saldo da Carteira. Use a aba Carteira para registrar gastos dela.';
+
+function isWalletCategory(category) {
+  const managed = WALLET_CATEGORY[category.flow];
+  return managed != null && category.name.toLowerCase() === managed.name.toLowerCase();
+}
+
 function isWallet(account) {
   return account.role === ACCOUNT_ROLE.WALLET;
 }
@@ -36,6 +44,8 @@ function averageWalletSpending(windowTotals) {
 
 module.exports = {
   WALLET_CATEGORY,
+  WALLET_CATEGORY_MESSAGE,
+  isWalletCategory,
   isWallet,
   walletAdjustment,
   walletSpendingWindow,

@@ -4,6 +4,7 @@ const { NotFoundError, BadRequestError, UnprocessableError } = require('../error
 const { validateAmount } = require('../domain/amount');
 const { SCHEDULE, FLOW, INVESTMENT_DIRECTION } = require('../domain/constants');
 const { monthOf, firstDay, lastDay, formatMonth, formatDate } = require('../domain/months');
+const { isWalletCategory, WALLET_CATEGORY_MESSAGE } = require('../domain/wallet');
 const seriesService = require('./seriesService');
 
 const TX_INCLUDE = Object.freeze({ recurrences: true, balance_update: true });
@@ -76,10 +77,17 @@ async function resolveTarget(userId, item) {
   return targetData(item, await loadTargets(userId, [item]));
 }
 
+async function assertNotWalletCategory(userId, categoryId) {
+  if (categoryId == null) return;
+  const category = await prisma.categories.findFirst({ where: { id: BigInt(categoryId), user_id: BigInt(userId) } });
+  if (category && isWalletCategory(category)) throw new UnprocessableError(WALLET_CATEGORY_MESSAGE);
+}
+
 async function create(userId, body) {
   if (body.schedule === SCHEDULE.FIXED) {
     throw new BadRequestError('Lançamentos fixos são criados como série em /recurrences.');
   }
+  await assertNotWalletCategory(userId, body.categoryId);
   const target = await resolveTarget(userId, body);
   const tx = await prisma.transactions.create({
     data: {

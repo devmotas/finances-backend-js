@@ -17,6 +17,7 @@ const MOVEMENT_SELECT = Object.freeze({
   direction: true,
   amount: true,
   flow: true,
+  created_at: true,
   balance_update: { select: { investment_account_id: true } },
 });
 

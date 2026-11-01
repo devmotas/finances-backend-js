@@ -34,6 +34,44 @@ test('rendimento pela última atualização até a data; aportes depois dela som
   assert.equal(may.yield.toNumber(), 50);
 });
 
+test('resgate no mesmo dia, registrado depois da atualização de saldo, sai da conta', () => {
+  const update = { date: date('2026-11-01'), balance: '1000', created_at: new Date('2026-11-01T10:00:00Z') };
+  const withdrawal = (createdAt) => ({
+    date: date('2026-11-01'),
+    direction: 'withdrawal',
+    amount: '700',
+    created_at: new Date(createdAt),
+  });
+
+  const after = accountPosition(
+    { initialBalance: '1000', movements: [withdrawal('2026-11-01T11:00:00Z')], balanceUpdates: [update] },
+    date('2026-11-30')
+  );
+  assert.equal(after.yield.toNumber(), 0);
+  assert.equal(after.position.toNumber(), 300);
+
+  const before = accountPosition(
+    { initialBalance: '1000', movements: [withdrawal('2026-11-01T09:00:00Z')], balanceUpdates: [update] },
+    date('2026-11-30')
+  );
+  assert.equal(before.yield.toNumber(), 700);
+  assert.equal(before.position.toNumber(), 1000);
+});
+
+test('ajuste gerado pela atualização de saldo conta antes dela mesmo registrado depois', () => {
+  const update = { date: date('2026-11-01'), balance: '800', created_at: new Date('2026-11-01T10:00:00Z') };
+  const adjustment = {
+    date: date('2026-11-01'),
+    flow: 'expense',
+    amount: '200',
+    balance_update_id: 1n,
+    created_at: new Date('2026-11-01T10:00:01Z'),
+  };
+  const p = accountPosition({ initialBalance: '1000', movements: [adjustment], balanceUpdates: [update] }, date('2026-11-30'));
+  assert.equal(p.yield.toNumber(), 0);
+  assert.equal(p.position.toNumber(), 800);
+});
+
 test('quanto falta para o valor-alvo nunca é negativo', () => {
   assert.equal(missingToTarget('1000', 600).toNumber(), 400);
   assert.equal(missingToTarget('1000', 1500).toNumber(), 0);

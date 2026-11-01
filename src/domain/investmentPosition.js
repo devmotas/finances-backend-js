@@ -30,6 +30,33 @@ function bookAt(account, movements, until) {
     .reduce((acc, m) => acc.plus(movementValue(m)), openingAt(account, until));
 }
 
+function sameDay(a, b) {
+  return new Date(a).getTime() === new Date(b).getTime();
+}
+
+function belongsToUpdate(movement) {
+  return movement.balance_update_id != null || movement.balance_update != null;
+}
+
+function registeredAfter(movement, update) {
+  if (!movement.created_at || !update.created_at) return false;
+  return new Date(movement.created_at) > new Date(update.created_at);
+}
+
+function countsBeforeUpdate(movement, update) {
+  if (movement.date > update.date) return false;
+  if (!sameDay(movement.date, update.date) || belongsToUpdate(movement)) return true;
+  return !registeredAfter(movement, update);
+}
+
+function bookAtUpdate(account, movements, update) {
+  return bookAt(
+    account,
+    movements.filter((m) => countsBeforeUpdate(m, update)),
+    update.date
+  );
+}
+
 function latestUpdateUntil(balanceUpdates, until) {
   return balanceUpdates
     .filter((u) => u.date <= until)
@@ -38,7 +65,7 @@ function latestUpdateUntil(balanceUpdates, until) {
 
 function yieldAt(account, movements, update) {
   if (update == null) return ZERO;
-  return new Decimal(update.balance).minus(bookAt(account, movements, update.date));
+  return new Decimal(update.balance).minus(bookAtUpdate(account, movements, update));
 }
 
 function walletSpending(movements) {
@@ -68,4 +95,4 @@ function missingToTarget(targetBalance, balance) {
   return Decimal.max(ZERO, new Decimal(targetBalance).minus(balance));
 }
 
-module.exports = { signedAmount, accountPosition, missingToTarget };
+module.exports = { signedAmount, accountPosition, bookAtUpdate, missingToTarget };

@@ -1,6 +1,7 @@
 const prisma = require('../db/prisma');
 const { NotFoundError, ConflictError, UnprocessableError } = require('../errors/AppError');
 const { FLOW } = require('../domain/constants');
+const { isWalletCategory, WALLET_CATEGORY_MESSAGE } = require('../domain/wallet');
 const { syncLegacyCategory, removeLegacyAccount } = require('./investmentAccountService');
 
 async function listAll(userId) {
@@ -35,6 +36,9 @@ async function create(userId, { name, flow, expenseGroup, openingBalanceAmount }
 
 async function update(userId, categoryId, { name, flow, expenseGroup, openingBalanceAmount }) {
   const category = await findOrThrow(userId, categoryId);
+  if (isWalletCategory(category) && category.name.toLowerCase() !== name.toLowerCase()) {
+    throw new UnprocessableError(WALLET_CATEGORY_MESSAGE);
+  }
   if (category.flow !== flow) {
     throw new UnprocessableError('Não é possível mudar o tipo (entrada, saída ou investimento) de uma categoria.');
   }
@@ -98,6 +102,7 @@ function toDto(cat) {
     flow: cat.flow,
     expenseGroup: cat.expense_group ?? null,
     openingBalanceAmount: parseFloat(Number(cat.opening_balance_amount).toFixed(2)),
+    walletManaged: isWalletCategory(cat),
   };
 }
 
